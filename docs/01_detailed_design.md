@@ -105,6 +105,54 @@ demand = [
 
 이 설계에서는 station 0이 아침에 자주 부족해지고, station 1은 저녁에 자주 부족해질 가능성이 높다. 따라서 state에 `time_step`을 포함하는 이유가 명확해진다.
 
+### 현재 구현된 V0 상태
+
+현재 저장소에는 V0의 최소 실행 루프가 구현되어 있다.
+
+| 항목 | 현재 구현 |
+|---|---|
+| 환경 | `ToyDdareungiEnv` |
+| API | Gymnasium 스타일 `reset()` / `step()` |
+| 관측값 | 정규화된 station stock, truck location, truck load, time step |
+| 원본 값 | `info`와 episode log에 station/truck/reward component 저장 |
+| baseline | Random, Low-stock |
+| render mode | `none`, `ansi`, `human` |
+| episode log | JSON 저장 가능 |
+
+실행 예시는 다음과 같다.
+
+```bash
+PYTHONPATH=src python3 -m ddareungi_rl.training.evaluate --policy random --episodes 5 --seed 42
+PYTHONPATH=src python3 -m ddareungi_rl.training.evaluate --policy low-stock --episodes 5 --seed 42
+PYTHONPATH=src python3 -m ddareungi_rl.training.evaluate --policy low-stock --episodes 1 --render-mode ansi
+```
+
+현재 `ansi`는 평가 코드가 환경의 text frame을 받아 출력하고, `human`은 `ToyDdareungiEnv.step()`이 직접 frame을 출력한다. 이후 픽셀/타일 기반 시각화는 학습 코드와 직접 연결하지 않고, 저장된 episode log를 replay하는 방식으로 확장한다.
+
+현재 구현은 DQN 학습 전 단계다. 즉, 환경과 baseline 평가, episode log 저장은 구현되어 있지만 DQN 학습 코드는 아직 다음 단계로 남아 있다.
+
+### V0 반납 패턴
+
+초기 V0 설계는 대여 수요만 사용했지만, 실제 구현에서는 toy 환경이 중반 이후 완전히 고갈되는 것을 줄이기 위해 단순한 시간대별 반납 패턴도 함께 사용한다.
+
+처리 순서는 다음과 같다.
+
+```text
+1. 트럭이 선택된 대여소로 이동한다.
+2. target_stock 기준 자동 재배치를 수행한다.
+3. 시간대별 대여 demand를 샘플링하고 적용한다.
+4. 시간대별 returns를 샘플링하고 적용한다.
+5. unmet_demand, full_returns, movement_cost, reward를 기록한다.
+```
+
+현재 reward는 여전히 V0의 단순식을 사용한다.
+
+```text
+reward = -10 * unmet_demand - movement_cost + service_bonus
+```
+
+`full_returns`는 현재 `info`와 episode log에 기록하지만, reward에는 아직 직접 반영하지 않는다. 이는 V1에서 반납 실패 비용을 추가하기 위한 준비 값이다.
+
 ## Agent, Environment, State, Action, Reward
 
 강화학습 문제는 에이전트가 환경을 관찰하고, 행동을 선택하고, 그 결과로 보상을 받는 구조로 볼 수 있다.
@@ -536,6 +584,61 @@ reward = -10 * 3 - 0 + 0
 
 이 구조에서 에이전트는 "현재 부족한 곳"만 보는 것이 아니라, 시간대별 수요 패턴을 고려해 앞으로 부족해질 가능성이 있는 대여소를 미리 방문하는 정책을 학습하는 것이 목표다.
 
+### Episode log schema
+
+현재 평가 코드는 첫 episode log를 JSON으로 저장할 수 있다.
+
+```bash
+PYTHONPATH=src python3 -m ddareungi_rl.training.evaluate \
+  --policy low-stock \
+  --episodes 3 \
+  --save-log outputs/low_stock_episode.json
+```
+
+reset record:
+
+```text
+event
+state
+info
+```
+
+step record:
+
+```text
+event
+state
+action
+reward
+next_state
+terminated
+truncated
+info
+```
+
+`info`에는 분석과 시각화에 필요한 값을 함께 저장한다.
+
+```text
+time_step
+previous_truck_location
+truck_location
+truck_bikes
+station_bikes
+action
+demand
+returns
+served_demand
+unmet_demand
+accepted_returns
+full_returns
+movement_cost
+service_bonus
+relocation_delta
+reward
+```
+
+이 log를 사용하면 학습/평가 코드와 렌더링 코드를 분리하면서도, 같은 episode를 콘솔 또는 픽셀/타일맵 시각화로 다시 재생할 수 있다.
+
 ### Episode 종료 조건
 
 V0는 명시적인 성공 또는 실패 terminal state를 두지 않는다. 한 episode는 하루를 단순화한 24 step으로 고정한다.
@@ -591,9 +694,9 @@ Random policy는 DQN이 최소한 무작위보다 나은지 확인하기 위한 
 
 ## 단계별 개발 계획
 
-### V0: Toy DQN Environment
+### V0: Toy Environment and Baseline Evaluation
 
-목표는 가장 작은 강화학습 문제를 완성하는 것이다.
+목표는 가장 작은 강화학습 환경을 실행 가능하게 만들고, DQN 학습 전에 baseline 평가 루프를 완성하는 것이다.
 
 | 항목 | 내용 |
 |---|---|
@@ -601,7 +704,7 @@ Random policy는 DQN이 최소한 무작위보다 나은지 확인하기 위한 
 | 수요 | 직접 만든 시간대별 수요 패턴 |
 | action | 방문할 대여소 선택 |
 | reward | 미충족 수요 패널티 + 이동 비용 |
-| 알고리즘 | DQN |
+| 알고리즘 | Random, Low-stock baseline 우선. DQN은 다음 milestone |
 | 비교 | Random policy, Low-stock policy |
 | 결과 | reward curve, unmet demand 비교 |
 
