@@ -71,13 +71,13 @@ V0는 DQN을 처음 적용하기 위한 가장 작은 환경이다.
 
 ### 대여소 가정
 
-V0에서는 실제 따릉이 대여소 이름을 사용하지 않고, 역할만 가진 가상 대여소를 사용한다.
+V0에서는 실제 특정 따릉이 대여소를 그대로 재현하지 않고, 역할만 가진 가상 대여소를 사용한다. 다만 발표와 시각화에서 한국적인 맥락이 보이도록 역할 기반 한국식 가상 이름을 붙인다.
 
-| 대여소 | 의미 | 수요 특징 |
-|---|---|---|
-| station 0 | 주거지역 | 아침 수요 높음 |
-| station 1 | 업무지역 | 낮 또는 저녁 수요 높음 |
-| station 2 | 공원/중간지역 | 전반적으로 중간 수준 |
+| 대여소 | 표시 이름 | 의미 | 수요 특징 |
+|---|---|---|---|
+| station 0 | 마포구청역 | 주거지역 | 아침 수요 높음 |
+| station 1 | 여의도역 | 업무지역 | 낮 또는 저녁 수요 높음 |
+| station 2 | 서울숲입구 | 공원/중간지역 | 전반적으로 중간 수준 |
 
 이렇게 설정하면 단순한 랜덤 수요보다 학습할 패턴이 생긴다. DQN은 현재 시간과 대여소별 자전거 수를 보고 어느 대여소를 먼저 방문해야 장기적으로 수요 실패가 줄어드는지 학습할 수 있다.
 
@@ -115,9 +115,11 @@ demand = [
 | API | Gymnasium 스타일 `reset()` / `step()` |
 | 관측값 | 정규화된 station stock, truck location, truck load, time step |
 | 원본 값 | `info`와 episode log에 station/truck/reward component 저장 |
+| 대여소 이름 | `마포구청역`, `여의도역`, `서울숲입구` |
 | baseline | Random, Low-stock |
 | render mode | `none`, `ansi`, `human` |
 | episode log | JSON 저장 가능 |
+| 시각화 | terminal tile replay, pygame window replay |
 
 실행 예시는 다음과 같다.
 
@@ -148,7 +150,7 @@ PYTHONPATH=src python3 -m ddareungi_rl.training.evaluate --policy low-stock --ep
 현재 reward는 여전히 V0의 단순식을 사용한다.
 
 ```text
-reward = -10 * unmet_demand - movement_cost + service_bonus
+reward = -10 * unmet_demand - movement_cost
 ```
 
 `full_returns`는 현재 `info`와 episode log에 기록하지만, reward에는 아직 직접 반영하지 않는다. 이는 V1에서 반납 실패 비용을 추가하기 위한 준비 값이다.
@@ -298,14 +300,13 @@ if station_bikes < target_stock:
 V0의 reward는 수요 실패를 줄이는 방향으로 단순하게 정의한다.
 
 ```text
-reward = -10 * unmet_demand - movement_cost + service_bonus
+reward = -10 * unmet_demand - movement_cost
 ```
 
 | 요소 | 의미 |
 |---|---|
 | `unmet_demand` | 자전거가 부족해서 대여하지 못한 사용자 수 |
 | `movement_cost` | 트럭 이동에 따른 비용 |
-| `service_bonus` | 해당 step에서 수요를 모두 만족했을 때 주는 작은 보상 |
 
 첫 실험에서는 다음처럼 단순한 값을 사용할 수 있다.
 
@@ -313,16 +314,13 @@ reward = -10 * unmet_demand - movement_cost + service_bonus
 |---|---|
 | 대여 실패 1명 발생 | `-10` |
 | 트럭이 다른 대여소로 이동 | `-1` |
-| 수요를 모두 만족 | `+1` |
 
 예를 들어 어떤 step에서 전체 수요가 6명인데 실제로 4명만 자전거를 빌릴 수 있었고, 트럭이 다른 대여소로 이동했다면:
 
 ```text
 unmet_demand = 2
 movement_cost = 1
-service_bonus = 0
-
-reward = -10 * 2 - 1 + 0
+reward = -10 * 2 - 1
        = -21
 ```
 
@@ -331,10 +329,8 @@ reward = -10 * 2 - 1 + 0
 ```text
 unmet_demand = 0
 movement_cost = 1
-service_bonus = 1
-
-reward = -10 * 0 - 1 + 1
-       = 0
+reward = -10 * 0 - 1
+       = -1
 ```
 
 현재 트럭 위치와 에이전트가 선택한 대여소가 같아서 실제 이동이 없고, 수요도 모두 만족했다면:
@@ -342,10 +338,8 @@ reward = -10 * 0 - 1 + 1
 ```text
 unmet_demand = 0
 movement_cost = 0
-service_bonus = 1
-
-reward = -10 * 0 - 0 + 1
-       = +1
+reward = -10 * 0 - 0
+       = 0
 ```
 
 이 환경에서는 reward가 대부분 음수로 나올 수 있다. 중요한 것은 reward가 양수가 되는지가 아니라, 학습이 진행되면서 episode reward가 덜 음수로 개선되는지다.
@@ -413,10 +407,8 @@ reward:
 
 ```text
 movement_cost = 1
-service_bonus = 1
-
-reward = -10 * 0 - 1 + 1
-       = 0
+reward = -10 * 0 - 1
+       = -1
 ```
 
 해석:
@@ -480,9 +472,7 @@ reward:
 
 ```text
 movement_cost = 1
-service_bonus = 0
-
-reward = -10 * 1 - 1 + 0
+reward = -10 * 1 - 1
        = -11
 ```
 
@@ -554,9 +544,7 @@ reward:
 
 ```text
 movement_cost = 0
-service_bonus = 0
-
-reward = -10 * 3 - 0 + 0
+reward = -10 * 3 - 0
        = -30
 ```
 
@@ -620,10 +608,14 @@ info
 
 ```text
 time_step
+station_names
 previous_truck_location
+truck_previous_location
 truck_location
 truck_bikes
 station_bikes
+previous_station_bikes
+previous_truck_bikes
 action
 demand
 returns
@@ -632,12 +624,42 @@ unmet_demand
 accepted_returns
 full_returns
 movement_cost
-service_bonus
+service_success
 relocation_delta
+rebalance_type
+rebalance_station
+rebalance_amount
+truck_event
+truck_event_amount
+station_bikes_before_rebalance
+station_bikes_after_rebalance
+truck_bikes_before_rebalance
+truck_bikes_after_rebalance
 reward
+policy_name
+learning_stage
+episode_reward_so_far
+episode_served_demand_so_far
+episode_unmet_demand_so_far
+episode_total_demand_so_far
+service_rate_so_far
+episode_full_returns_so_far
+episode_movement_cost_so_far
+reward_formula
 ```
 
 이 log를 사용하면 학습/평가 코드와 렌더링 코드를 분리하면서도, 같은 episode를 콘솔 또는 픽셀/타일맵 시각화로 다시 재생할 수 있다.
+
+pygame 창 기반 replay는 같은 log를 읽어 FrozenLake 스타일 격자 화면으로 보여준다.
+
+```bash
+ddareungi-demo
+ddareungi-replay-window outputs/low_stock_episode.json --max-steps 10
+```
+
+창 replay에서는 `previous_truck_location -> truck_location`으로 트럭 이동을 보간하고, `rebalance_type`, `rebalance_amount`로 자전거 싣기/내리기 이벤트를 표시한다. 오른쪽 패널에는 하루 목표인 `헛걸음 줄이기`, 현재 policy, `DQN 학습 전 기준 정책` label, 누적 점수, 누적 헛걸음, 누적 이동비용을 간결하게 표시한다. 여기서 `헛걸음`은 `unmet_demand`를 발표용으로 바꾼 표현이며, 트럭의 비효율적인 이동은 `누적 이동비용`으로 분리해서 본다. 대여소 card는 `안정`, `부족 주의`, `헛걸음 위험` 상태를 색상, label, 얼굴 표정으로 함께 보여준다. 얼굴 표정은 정책의 감정이 아니라 사용자의 대여 경험 상태를 빠르게 읽기 위한 보조 신호다. episode가 끝나면 `우수`, `양호`, `주의`, `개선 필요` 중 하나로 하루 운영 결과를 보여준다.
+
+현재 V0 replay는 학습 중 화면이 아니라 baseline 정책의 행동을 설명하는 화면이다. DQN을 추가한 뒤에는 replay 화면은 한 episode의 행동을 보여주고, 별도 학습 화면에서 episode reward moving average, epsilon, loss, baseline 대비 개선율을 보여준다.
 
 ### Episode 종료 조건
 

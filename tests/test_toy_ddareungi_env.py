@@ -41,6 +41,31 @@ class ToyDdareungiEnvTest(unittest.TestCase):
         self.assertIn("Toy Ddareungi V0", frame)
         self.assertIn("truck_loc", frame)
 
+    def test_step_info_contains_animation_fields(self):
+        """step info에 replay animation용 필드가 포함되는지 검증한다."""
+        env = ToyDdareungiEnv(seed=123)
+        env.reset(seed=123)
+
+        _, _, _, _, info = env.step(1)
+
+        self.assertIn("station_names", info)
+        self.assertIn("truck_previous_location", info)
+        self.assertIn("rebalance_type", info)
+        self.assertIn("rebalance_amount", info)
+        self.assertIn("station_bikes_before_rebalance", info)
+        self.assertIn("station_bikes_after_rebalance", info)
+        self.assertIn("service_success", info)
+
+    def test_reward_uses_unmet_demand_and_movement_cost(self):
+        """V0 reward가 미충족 수요와 이동비용만 반영하는지 검증한다."""
+        env = ToyDdareungiEnv(seed=123)
+        env.reset(seed=123)
+
+        _, reward, _, _, info = env.step(0)
+
+        expected_reward = -10 * int(info["unmet_demand"]) - int(info["movement_cost"])
+        self.assertEqual(reward, expected_reward)
+
 
 if __name__ == "__main__":
     unittest.main()

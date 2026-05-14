@@ -30,9 +30,9 @@ class PixelReplayTest(unittest.TestCase):
         frame = render_frame(record, color=False)
 
         self.assertIn("Ddareungi Tile Replay", frame)
-        self.assertIn("HOME", frame)
-        self.assertIn("WORK", frame)
-        self.assertIn("PARK", frame)
+        self.assertIn("마포구청역", frame)
+        self.assertIn("여의도역", frame)
+        self.assertIn("서울숲입구", frame)
         self.assertIn("time=07/24", frame)
         self.assertIn("unmet=3", frame)
 

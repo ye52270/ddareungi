@@ -23,7 +23,9 @@ class EpisodeResult:
     """평가된 episode 하나의 요약 지표와 replay log를 보관한다."""
 
     episode_reward: float
+    served_demand: int
     unmet_demand: int
+    total_demand: int
     full_returns: int
     movement_cost: int
     steps: int
@@ -44,12 +46,15 @@ def run_episode(
     policy: Policy,
     seed: int | None = None,
     render_mode: RenderChoice = "none",
+    policy_name: str = "baseline",
 ) -> EpisodeResult:
     """episode 하나를 끝까지 실행하고 선택적으로 렌더링하며 replay record를 모은다."""
     state, info = env.reset(seed=seed)
     done = False
     episode_reward = 0.0
+    total_served = 0
     total_unmet = 0
+    total_demand = 0
     total_full_returns = 0
     total_movement_cost = 0
     log: list[dict[str, object]] = [
@@ -68,9 +73,21 @@ def run_episode(
         next_state, reward, terminated, truncated, step_info = env.step(action)
         done = terminated or truncated
         episode_reward += reward
+        total_served += int(step_info["served_demand"])
         total_unmet += int(step_info["unmet_demand"])
+        total_demand = total_served + total_unmet
         total_full_returns += int(step_info["full_returns"])
         total_movement_cost += int(step_info["movement_cost"])
+        step_info["policy_name"] = policy_name
+        step_info["learning_stage"] = "학습 전 기준 정책"
+        step_info["episode_reward_so_far"] = episode_reward
+        step_info["episode_served_demand_so_far"] = total_served
+        step_info["episode_unmet_demand_so_far"] = total_unmet
+        step_info["episode_total_demand_so_far"] = total_demand
+        step_info["episode_full_returns_so_far"] = total_full_returns
+        step_info["episode_movement_cost_so_far"] = total_movement_cost
+        step_info["service_rate_so_far"] = service_rate(total_served, total_demand)
+        step_info["reward_formula"] = "-10 * unmet_demand - movement_cost"
 
         log.append(
             {
@@ -91,12 +108,21 @@ def run_episode(
 
     return EpisodeResult(
         episode_reward=episode_reward,
+        served_demand=total_served,
         unmet_demand=total_unmet,
+        total_demand=total_demand,
         full_returns=total_full_returns,
         movement_cost=total_movement_cost,
         steps=len(log) - 1,
         log=log,
     )
+
+
+def service_rate(served_demand: int, total_demand: int) -> float:
+    """전체 수요 중 처리된 수요 비율을 반환한다."""
+    if total_demand == 0:
+        return 1.0
+    return served_demand / total_demand
 
 
 def evaluate(
@@ -120,6 +146,7 @@ def evaluate(
                 policy=policy,
                 seed=episode_seed,
                 render_mode=episode_render_mode,
+                policy_name=policy_name,
             )
         )
 
@@ -180,6 +207,7 @@ def main() -> None:
     print(f"episodes={args.episodes}")
     print(f"avg_reward={mean(r.episode_reward for r in results):.2f}")
     print(f"avg_unmet_demand={mean(r.unmet_demand for r in results):.2f}")
+    print(f"avg_service_rate={mean(service_rate(r.served_demand, r.total_demand) for r in results):.2%}")
     print(f"avg_full_returns={mean(r.full_returns for r in results):.2f}")
     print(f"avg_movement_cost={mean(r.movement_cost for r in results):.2f}")
 

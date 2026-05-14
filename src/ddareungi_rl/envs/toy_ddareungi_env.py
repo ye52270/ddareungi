@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 import random
 from typing import Literal
 
+from ddareungi_rl.stations import STATION_NAMES
+
 
 RenderMode = Literal["ansi", "human"]
 
@@ -51,7 +53,6 @@ class ToyDdareungiConfig:
     episode_steps: int = 24
     unmet_demand_penalty: int = 10
     movement_cost_value: int = 1
-    service_bonus_value: int = 1
     initial_stock_min: int = 2
     initial_stock_max: int = 8
     initial_truck_bikes: int = 3
@@ -111,6 +112,7 @@ class ToyDdareungiEnv:
         self.truck_bikes = self.config.initial_truck_bikes
         self.time_step = 0
         self.last_info = {
+            "station_names": STATION_NAMES.copy(),
             "station_bikes": self.station_bikes.copy(),
             "truck_location": self.truck_location,
             "truck_bikes": self.truck_bikes,
@@ -127,34 +129,42 @@ class ToyDdareungiEnv:
             raise ValueError(f"action must be between 0 and {self.config.station_count - 1}")
 
         previous_location = self.truck_location
+        previous_station_bikes = self.station_bikes.copy()
+        previous_truck_bikes = self.truck_bikes
         movement_cost = (
             self.config.movement_cost_value if action != previous_location else 0
         )
 
         self.truck_location = action
+        station_before_rebalance = self.station_bikes[action]
+        truck_before_rebalance = self.truck_bikes
         relocation_delta = self._auto_rebalance(action)
+        station_after_rebalance = self.station_bikes[action]
+        truck_after_rebalance = self.truck_bikes
+        rebalance_type = self._rebalance_type(relocation_delta)
+        rebalance_amount = abs(relocation_delta)
         demand = self._sample_demand(self.time_step)
         served_demand, unmet_demand = self._apply_demand(demand)
         returns = self._sample_returns(self.time_step)
         accepted_returns, full_returns = self._apply_returns(returns)
 
-        service_bonus = self.config.service_bonus_value if unmet_demand == 0 else 0
-        reward = (
-            -self.config.unmet_demand_penalty * unmet_demand
-            - movement_cost
-            + service_bonus
-        )
+        service_success = unmet_demand == 0
+        reward = -self.config.unmet_demand_penalty * unmet_demand - movement_cost
 
         self.time_step += 1
         terminated = False
         truncated = self.time_step >= self.config.episode_steps
 
         info = {
+            "station_names": STATION_NAMES.copy(),
             "time_step": self.time_step,
             "previous_truck_location": previous_location,
+            "truck_previous_location": previous_location,
             "truck_location": self.truck_location,
             "truck_bikes": self.truck_bikes,
             "station_bikes": self.station_bikes.copy(),
+            "previous_station_bikes": previous_station_bikes,
+            "previous_truck_bikes": previous_truck_bikes,
             "action": action,
             "demand": demand,
             "returns": returns,
@@ -163,8 +173,17 @@ class ToyDdareungiEnv:
             "accepted_returns": accepted_returns,
             "full_returns": full_returns,
             "movement_cost": movement_cost,
-            "service_bonus": service_bonus,
+            "service_success": service_success,
             "relocation_delta": relocation_delta,
+            "rebalance_type": rebalance_type,
+            "rebalance_station": action,
+            "rebalance_amount": rebalance_amount,
+            "truck_event": rebalance_type if rebalance_amount else "move",
+            "truck_event_amount": rebalance_amount,
+            "station_bikes_before_rebalance": station_before_rebalance,
+            "station_bikes_after_rebalance": station_after_rebalance,
+            "truck_bikes_before_rebalance": truck_before_rebalance,
+            "truck_bikes_after_rebalance": truck_after_rebalance,
             "reward": reward,
         }
         self.last_info = info
@@ -218,6 +237,14 @@ class ToyDdareungiEnv:
 
         return 0
 
+    def _rebalance_type(self, relocation_delta: int) -> str:
+        """재배치 변화량을 load/unload/none 문자열로 변환한다."""
+        if relocation_delta < 0:
+            return "load"
+        if relocation_delta > 0:
+            return "unload"
+        return "none"
+
     def _sample_demand(self, time_step: int) -> list[int]:
         """현재 time step의 대여소별 대여 수요를 샘플링한다."""
         return self._sample_pattern(self.config.demand_pattern, time_step, "demand")
@@ -270,10 +297,9 @@ class ToyDdareungiEnv:
 
     def _render_text(self) -> str:
         """현재 상태와 마지막 transition 정보를 ANSI 스타일 frame으로 포맷한다."""
-        station_labels = ["HOME", "WORK", "PARK"]
         cells = []
         for station_id, bikes in enumerate(self.station_bikes):
-            label = station_labels[station_id] if station_id < len(station_labels) else f"S{station_id}"
+            label = STATION_NAMES[station_id] if station_id < len(STATION_NAMES) else f"S{station_id}"
             truck_marker = " T" if self.truck_location == station_id else "  "
             cells.append(f"{label}{truck_marker} bikes={bikes:02d}")
 

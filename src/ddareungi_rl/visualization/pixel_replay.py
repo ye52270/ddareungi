@@ -8,6 +8,8 @@ from pathlib import Path
 import time
 from typing import Any
 
+from ddareungi_rl.stations import STATION_NAMES, STATUS_TILE_NAME
+
 
 RESET = "\033[0m"
 BOLD = "\033[1m"
@@ -100,12 +102,12 @@ def render_frame(record: dict[str, Any], color: bool = True) -> str:
     movement_cost = int(info.get("movement_cost", 0))
     reward = float(info.get("reward", record.get("reward", 0)))
 
-    home = station_tile("HOME", 0, int(station_bikes[0]), truck_location, color)
-    work = station_tile("WORK", 1, int(station_bikes[1]), truck_location, color)
-    park = station_tile("PARK", 2, int(station_bikes[2]), truck_location, color)
+    home = station_tile(STATION_NAMES[0], 0, int(station_bikes[0]), truck_location, color)
+    work = station_tile(STATION_NAMES[1], 1, int(station_bikes[1]), truck_location, color)
+    park = station_tile(STATION_NAMES[2], 2, int(station_bikes[2]), truck_location, color)
     load_text = padded_color(str(truck_bikes), 7, BLUE, color)
     depot = [
-        f" {padded_color('TRUCK', 10, BOLD, color)}   ",
+        f" {padded_color(STATUS_TILE_NAME, 10, BOLD, color)}   ",
         f" load {load_text} ",
     ]
 
