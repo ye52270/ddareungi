@@ -17,6 +17,7 @@ dev = [
 
 [project.scripts]
 ddareungi-evaluate = "ddareungi_rl.training.evaluate:main"
+ddareungi-replay = "ddareungi_rl.visualization.pixel_replay:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

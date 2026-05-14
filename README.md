@@ -18,9 +18,10 @@
 | Low-stock heuristic baseline | 구현 완료 |
 | Episode log 저장 | 구현 완료 |
 | `none` / `ansi` / `human` text render | 구현 완료 |
+| Episode log tile replay | 구현 완료 |
 | `pytest` 기반 smoke test | 구현 완료 |
 | DQN 학습 | 예정 |
-| FrozenLake 스타일 pixel replay | 예정 |
+| PNG/GIF pixel asset export | 예정 |
 | 실제 따릉이 데이터 replay | 예정 |
 
 ## Quick Start
@@ -115,16 +116,27 @@ ddareungi-evaluate \
 
 저장된 log는 `state`, `action`, `reward`, `next_state`, 종료 flag, `demand`, `returns`, `unmet_demand`, `full_returns`, 트럭 상태, 대여소별 재고를 포함한다.
 
-다음 시각화 단계에서는 학습 코드와 렌더링 코드를 분리하고, 저장된 episode log를 replay하는 방식으로 FrozenLake 같은 작은 tile map을 만들 계획이다.
+저장된 log는 `ddareungi-replay`로 다시 볼 수 있다.
+
+```bash
+ddareungi-replay outputs/low_stock_episode.json --max-steps 5
+ddareungi-replay outputs/low_stock_episode.json --max-steps 5 --no-color
+```
+
+시각화는 학습 코드와 렌더링 코드를 분리하고, 저장된 episode log를 replay하는 방식으로 동작한다.
 
 ```text
-+---------+---------+
-| HOME    | WORK    |
-| bikes 2 | bikes10 |
-+---------+---------+
-| PARK T  | DEPOT   |
-| bikes 1 | load 0  |
-+---------+---------+
+Ddareungi Tile Replay
+-----------------------------------
++--------------+--------------+
+| HOME         | WORK       T |
+| bikes 06     | bikes 05     |
++--------------+--------------+
+| PARK         | TRUCK        |
+| bikes 02     | load 0       |
++--------------+--------------+
+time=01/24  action=1  reward=0
+unmet=0  full_returns=0  move_cost=1
 ```
 
 시각화에서 보여줄 정보:
@@ -144,7 +156,7 @@ ddareungi-evaluate \
 | V0-A | Toy environment 구현 | 완료 |
 | V0-B | Random / Low-stock baseline 평가 | 완료 |
 | V0-C | Episode log 저장과 text render | 완료 |
-| V0-D | Pixel/tile replay 시각화 | 예정 |
+| V0-D | Episode log tile replay 시각화 | 완료 |
 | V1 | DQN 학습과 baseline 비교 | 예정 |
 | V2 | Double DQN 비교 | 예정 |
 | V3 | Dueling DQN 비교 | 예정 |
@@ -160,8 +172,11 @@ src/ddareungi_rl/
     baselines.py
   training/
     evaluate.py
+  visualization/
+    pixel_replay.py
 tests/
   test_toy_ddareungi_env.py
+  test_pixel_replay.py
 docs/
   01_detailed_design.md
 ```
