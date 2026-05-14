@@ -4,6 +4,7 @@ from ddareungi_rl.visualization.pygame_replay import (
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
     action_reason,
+    close_button_rect,
     draw_timeline,
     draw_truck_load_hud,
     episode_grade,
@@ -14,6 +15,8 @@ from ddareungi_rl.visualization.pygame_replay import (
     frame_phase,
     interpolate,
     mission_status,
+    replay_quit_key_pressed,
+    replay_quit_requested,
     replay_window,
     require_pygame,
     select_font,
@@ -136,6 +139,65 @@ class PygameReplayTest(unittest.TestCase):
     def test_station_positions_only_include_stations(self):
         """pygame 지도 좌표가 실제 action 대상인 대여소만 포함하는지 검증한다."""
         self.assertEqual(set(station_positions()), {0, 1, 2})
+
+    def test_replay_quit_requested_handles_escape_q_and_close(self):
+        """Esc, Q, 창 닫기, 종료 버튼 click이 replay 종료 요청으로 판정되는지 검증한다."""
+        pygame = require_pygame()
+        pygame.init()
+
+        escape_event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE)
+        q_event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q)
+        close_event = pygame.event.Event(pygame.QUIT)
+        button = close_button_rect(pygame)
+        button_event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            button=1,
+            pos=button.center,
+        )
+        space_event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE)
+
+        self.assertTrue(replay_quit_requested(pygame, escape_event))
+        self.assertTrue(replay_quit_requested(pygame, q_event))
+        self.assertTrue(replay_quit_requested(pygame, close_event))
+        self.assertTrue(replay_quit_requested(pygame, button_event))
+        self.assertFalse(replay_quit_requested(pygame, space_event))
+
+        pygame.quit()
+
+    def test_replay_quit_requested_handles_command_shortcuts(self):
+        """macOS/desktop 닫기 단축키가 replay 종료 요청으로 판정되는지 검증한다."""
+        pygame = require_pygame()
+        pygame.init()
+
+        command_q = pygame.event.Event(
+            pygame.KEYDOWN,
+            key=pygame.K_q,
+            mod=pygame.KMOD_META,
+        )
+        command_w = pygame.event.Event(
+            pygame.KEYDOWN,
+            key=pygame.K_w,
+            mod=pygame.KMOD_META,
+        )
+
+        self.assertTrue(replay_quit_requested(pygame, command_q))
+        self.assertTrue(replay_quit_requested(pygame, command_w))
+
+        pygame.quit()
+
+    def test_replay_quit_key_pressed_defaults_to_false(self):
+        """키 입력이 없을 때 pressed-key 종료 보강이 False를 반환하는지 검증한다."""
+        import os
+
+        os.environ["SDL_VIDEODRIVER"] = "dummy"
+        pygame = require_pygame()
+        pygame.init()
+        pygame.display.set_mode((1, 1))
+
+        self.assertFalse(replay_quit_key_pressed(pygame))
+
+        pygame.display.quit()
+        pygame.quit()
 
     def test_draw_truck_load_hud_runs_without_extra_action_tile(self):
         """중앙 트럭 적재 HUD가 dummy surface에서 렌더링되는지 검증한다."""

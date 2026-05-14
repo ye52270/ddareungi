@@ -20,6 +20,7 @@ viz = [
 ]
 
 [project.scripts]
+ddareungi = "ddareungi_rl.cli:main"
 ddareungi-demo = "ddareungi_rl.visualization.demo:main"
 ddareungi-evaluate = "ddareungi_rl.training.evaluate:main"
 ddareungi-replay = "ddareungi_rl.visualization.pixel_replay:main"

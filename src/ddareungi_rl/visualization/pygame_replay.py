@@ -25,6 +25,10 @@ TIMELINE_X = 80
 TIMELINE_Y = 760
 TIMELINE_WIDTH = 1120
 TIMELINE_HEIGHT = 26
+CLOSE_BUTTON_X = 1128
+CLOSE_BUTTON_Y = 34
+CLOSE_BUTTON_WIDTH = 92
+CLOSE_BUTTON_HEIGHT = 34
 
 BACKGROUND = (229, 238, 235)
 CITY_BLOCK = (239, 244, 241)
@@ -198,6 +202,39 @@ def frame_phase(frame_count: int) -> tuple[float, bool]:
     if frame_count < MOVE_FRAMES:
         return frame_count / max(1, MOVE_FRAMES - 1), False
     return 1.0, True
+
+
+def replay_quit_requested(pygame: Any, event: Any) -> bool:
+    """pygame event가 replay 창 종료 요청인지 판정한다."""
+    window_close = getattr(pygame, "WINDOWCLOSE", None)
+    if event.type == pygame.QUIT:
+        return True
+    if window_close is not None and event.type == window_close:
+        return True
+    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        return close_button_rect(pygame).collidepoint(event.pos)
+    if event.type == pygame.KEYDOWN:
+        if event.key in (pygame.K_ESCAPE, pygame.K_q):
+            return True
+        command_or_ctrl = bool(getattr(event, "mod", 0) & (pygame.KMOD_META | pygame.KMOD_CTRL))
+        return command_or_ctrl and event.key in (pygame.K_q, pygame.K_w)
+    return False
+
+
+def replay_quit_key_pressed(pygame: Any) -> bool:
+    """현재 키보드 상태에서 replay 종료 키가 눌렸는지 확인한다."""
+    pressed = pygame.key.get_pressed()
+    return bool(pressed[pygame.K_ESCAPE] or pressed[pygame.K_q])
+
+
+def close_button_rect(pygame: Any) -> Any:
+    """replay 창 안의 클릭 가능한 종료 버튼 영역을 반환한다."""
+    return pygame.Rect(
+        CLOSE_BUTTON_X,
+        CLOSE_BUTTON_Y,
+        CLOSE_BUTTON_WIDTH,
+        CLOSE_BUTTON_HEIGHT,
+    )
 
 
 def select_font(pygame: Any, size: int, bold: bool = False) -> Any:
@@ -541,7 +578,21 @@ def draw_hud(
     draw_text(surface, fonts["small"], format_action(info), (58, 90), MUTED)
     draw_text(surface, fonts["small"], phase_text, (315, 90), ORANGE if hold_phase else BLUE)
     draw_text(surface, fonts["small"], pause_text, (470, 90), RED if paused else GREEN)
-    draw_text(surface, fonts["tiny"], "Space 일시정지   Right 다음   R 다시보기   Q/Esc 종료", (80, 830), MUTED)
+    draw_text(
+        surface,
+        fonts["tiny"],
+        "창 클릭 후 Space 일시정지   Right 다음   R 다시보기   Q/Esc 종료",
+        (80, 830),
+        MUTED,
+    )
+
+
+def draw_close_button(pygame: Any, surface: Any, fonts: dict[str, Any]) -> None:
+    """키보드 포커스 없이도 종료할 수 있는 버튼을 그린다."""
+    button = close_button_rect(pygame)
+    pygame.draw.rect(surface, DARK, button, border_radius=10)
+    pygame.draw.rect(surface, WHITE, button, width=2, border_radius=10)
+    draw_text(surface, fonts["tiny"], "창 닫기", (button.x + 18, button.y + 9), WHITE)
 
 
 def draw_episode_summary(
@@ -566,7 +617,7 @@ def draw_episode_summary(
     draw_text(surface, fonts["metric"], grade, (grade_x, card.y + 78), grade_color)
     draw_text(surface, fonts["small"], f"헛걸음 {cumulative_unmet}건", (card.x + 112, card.y + 150), RED if cumulative_unmet else GREEN)
     draw_text(surface, fonts["small"], f"이동비용 {movement_cost} / 점수 {cumulative_reward:+.0f}", (card.x + 112, card.y + 182), TEXT)
-    draw_text(surface, fonts["tiny"], "R: 다시 보기   Q/Esc: 종료", (card.x + 112, card.y + 226), MUTED)
+    draw_text(surface, fonts["tiny"], "창 클릭 후 R: 다시 보기   Q/Esc: 종료", (card.x + 84, card.y + 226), MUTED)
 
 
 def draw_frame(
@@ -597,6 +648,7 @@ def draw_frame(
     draw_hud(surface, fonts, info, paused, hold_phase)
     if ended:
         draw_episode_summary(pygame, surface, fonts, info)
+    draw_close_button(pygame, surface, fonts)
 
 
 def replay_window(
@@ -625,6 +677,7 @@ def replay_window(
     if max_steps is not None:
         steps = steps[:max_steps]
     if not steps:
+        pygame.display.quit()
         pygame.quit()
         return
 
@@ -638,12 +691,11 @@ def replay_window(
     try:
         while running:
             for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+                if replay_quit_requested(pygame, event):
                     running = False
+                    break
                 elif event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_ESCAPE, pygame.K_q):
-                        running = False
-                    elif event.key == pygame.K_SPACE:
+                    if event.key == pygame.K_SPACE:
                         paused = not paused
                     elif event.key == pygame.K_r:
                         step_index = 0
@@ -653,6 +705,11 @@ def replay_window(
                         step_index = min(step_index + 1, len(steps) - 1)
                         frame_count = MOVE_FRAMES
                         ended = False
+
+            if running and replay_quit_key_pressed(pygame):
+                running = False
+            if not running:
+                break
 
             progress, hold_phase = frame_phase(frame_count)
             draw_frame(
@@ -686,6 +743,7 @@ def replay_window(
             clock.tick(fps)
 
     finally:
+        pygame.display.quit()
         pygame.quit()
 
 
