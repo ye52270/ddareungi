@@ -161,6 +161,8 @@ ddareungi-evaluate --policy low-stock --episodes 5 --seed 42
 
 V0의 한계는 의도적인 단순화다. 실제 복잡도를 추가하기 전에 MDP loop, reward, baseline 비교가 작동하는지 먼저 검증하는 것이 V0의 목표다.
 
+현재 V0는 baseline과 replay까지 완료한 안정 기준선으로 두고, 이후 작업은 같은 MDP 위에서 V1 DQN 학습과 baseline 비교로 진행한다.
+
 | 한계 | 현재 처리 | 향후 개선 |
 |---|---|---|
 | 실제 따릉이 데이터 미사용 | toy demand/return pattern 사용 | 서울 열린데이터 기반 시간대별 수요 구성 |

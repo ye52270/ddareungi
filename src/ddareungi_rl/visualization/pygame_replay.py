@@ -7,23 +7,23 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ddareungi_rl.stations import STATUS_TILE_NAME, STATION_NAMES
+from ddareungi_rl.stations import STATION_NAMES
 from ddareungi_rl.visualization.pixel_replay import load_episode_log, step_records
 
 
-WINDOW_WIDTH = 1120
-WINDOW_HEIGHT = 760
-TILE_SIZE = 210
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 860
+TILE_SIZE = 220
 TILE_RADIUS = 12
 MOVE_FRAMES = 18
 HOLD_FRAMES = 16
-PANEL_X = 785
-PANEL_Y = 140
-PANEL_WIDTH = 285
-PANEL_HEIGHT = 430
-TIMELINE_X = 70
-TIMELINE_Y = 675
-TIMELINE_WIDTH = 1000
+PANEL_X = 890
+PANEL_Y = 150
+PANEL_WIDTH = 330
+PANEL_HEIGHT = 510
+TIMELINE_X = 80
+TIMELINE_Y = 760
+TIMELINE_WIDTH = 1120
 TIMELINE_HEIGHT = 26
 
 BACKGROUND = (229, 238, 235)
@@ -57,13 +57,12 @@ def require_pygame() -> Any:
     return pygame
 
 
-def station_positions() -> dict[int | str, tuple[int, int]]:
-    """화면에서 대여소와 상태 tile의 좌상단 좌표를 반환한다."""
+def station_positions() -> dict[int, tuple[int, int]]:
+    """화면에서 삼각형 대여소 tile의 좌상단 좌표를 반환한다."""
     return {
-        0: (255, 125),
-        1: (70, 365),
-        2: (440, 365),
-        "status": (255, 620),
+        0: (320, 120),
+        1: (100, 455),
+        2: (540, 455),
     }
 
 
@@ -362,23 +361,22 @@ def draw_station_tile(
         draw_text(surface, fonts["tiny"], format_rebalance(info), (x + 20, y + 188), BLUE)
 
 
-def draw_status_tile(
+def draw_truck_load_hud(
     pygame: Any,
     surface: Any,
     fonts: dict[str, Any],
     info: dict[str, Any],
 ) -> None:
-    """차고지 영역에 트럭 적재량과 이번 행동 결과를 그린다."""
-    x, y = 70, 590
-    rect = pygame.Rect(x, y, 670, 66)
+    """삼각형 중앙에 현재 트럭 적재량만 간결하게 그린다."""
+    x, y = 342, 364
+    rect = pygame.Rect(x, y, 176, 64)
     draw_card_shadow(pygame, surface, rect)
     draw_rounded_rect(pygame, surface, rect, PANEL, border_color=(210, 218, 226))
-    status_text, status_color = mission_status(info)
-    draw_text(surface, fonts["small"], STATUS_TILE_NAME, (x + 20, y + 20), TEXT)
-    draw_text(surface, fonts["tiny"], "트럭 적재", (x + 150, y + 17), MUTED)
-    draw_bike_icon(pygame, surface, (x + 240, y + 24), BLUE)
-    draw_text(surface, fonts["body"], f"{info.get('truck_bikes', 0)}대", (x + 292, y + 16), BLUE)
-    draw_small_pill(pygame, surface, fonts, status_text, (x + 390, y + 19), status_color)
+    truck_bikes = int(info.get("truck_bikes", 0))
+    truck_capacity = int(info.get("truck_capacity", 5))
+    draw_text(surface, fonts["tiny"], "트럭 적재", (x + 18, y + 10), MUTED)
+    draw_bike_icon(pygame, surface, (x + 18, y + 34), BLUE)
+    draw_text(surface, fonts["body"], f"{truck_bikes}/{truck_capacity}", (x + 70, y + 24), BLUE)
 
 
 def draw_metric_panel(
@@ -465,9 +463,9 @@ def draw_city_background(pygame: Any, surface: Any) -> None:
     """지도 느낌을 주는 밝은 city block 배경을 그린다."""
     surface.fill(BACKGROUND)
     for rect in [
-        pygame.Rect(40, 100, 700, 490),
-        pygame.Rect(755, 112, 335, 480),
-        pygame.Rect(48, 574, 1040, 130),
+        pygame.Rect(50, 100, 790, 630),
+        pygame.Rect(860, 120, 390, 610),
+        pygame.Rect(60, 725, 1160, 102),
     ]:
         pygame.draw.rect(surface, CITY_BLOCK, rect, border_radius=18)
 
@@ -491,7 +489,7 @@ def truck_position(info: dict[str, Any], progress: float) -> tuple[int, int]:
     dx = end[0] - start[0]
     dy = end[1] - start[1]
     distance = max(1.0, (dx * dx + dy * dy) ** 0.5)
-    inset = min(TILE_SIZE / 2 + 8, distance * 0.45)
+    inset = min(TILE_SIZE / 2 + 32, distance * 0.45)
     safe_start = (
         int(start[0] + dx / distance * inset),
         int(start[1] + dy / distance * inset),
@@ -536,14 +534,14 @@ def draw_hud(
     pause_text = "일시정지" if paused else "재생"
     reward = float(info.get("episode_reward_so_far", info.get("reward", 0)))
     unmet = int(info.get("episode_unmet_demand_so_far", info.get("unmet_demand", 0)))
-    draw_text(surface, fonts["title"], "따릉이 재배치 작전", (54, 34), TEXT)
-    draw_text(surface, fonts["small"], f"점수 {reward:+.0f}", (390, 44), GREEN if reward >= 0 else RED)
-    draw_text(surface, fonts["small"], f"헛걸음 {unmet}", (520, 44), RED if unmet else GREEN)
-    draw_text(surface, fonts["small"], f"{int(info.get('time_step', 0)):02d}/24", (660, 44), MUTED)
-    draw_text(surface, fonts["small"], format_action(info), (54, 86), MUTED)
-    draw_text(surface, fonts["small"], phase_text, (280, 86), ORANGE if hold_phase else BLUE)
-    draw_text(surface, fonts["small"], pause_text, (410, 86), RED if paused else GREEN)
-    draw_text(surface, fonts["tiny"], "Space 일시정지   Right 다음   R 다시보기   Q/Esc 종료", (60, 724), MUTED)
+    draw_text(surface, fonts["title"], "따릉이 재배치 작전", (58, 36), TEXT)
+    draw_text(surface, fonts["small"], f"점수 {reward:+.0f}", (450, 48), GREEN if reward >= 0 else RED)
+    draw_text(surface, fonts["small"], f"헛걸음 {unmet}", (610, 48), RED if unmet else GREEN)
+    draw_text(surface, fonts["small"], f"{int(info.get('time_step', 0)):02d}/24", (770, 48), MUTED)
+    draw_text(surface, fonts["small"], format_action(info), (58, 90), MUTED)
+    draw_text(surface, fonts["small"], phase_text, (315, 90), ORANGE if hold_phase else BLUE)
+    draw_text(surface, fonts["small"], pause_text, (470, 90), RED if paused else GREEN)
+    draw_text(surface, fonts["tiny"], "Space 일시정지   Right 다음   R 다시보기   Q/Esc 종료", (80, 830), MUTED)
 
 
 def draw_episode_summary(
@@ -561,7 +559,7 @@ def draw_episode_summary(
     cumulative_unmet = int(info.get("episode_unmet_demand_so_far", info.get("unmet_demand", 0)))
     movement_cost = int(info.get("episode_movement_cost_so_far", info.get("movement_cost", 0)))
     grade, grade_color = episode_grade(cumulative_reward, cumulative_unmet, movement_cost)
-    card = pygame.Rect(360, 220, 420, 280)
+    card = pygame.Rect(430, 270, 420, 280)
     draw_rounded_rect(pygame, surface, card, WHITE, border_color=PANEL_BORDER)
     draw_text(surface, fonts["body"], "하루 재배치 결과", (card.x + 104, card.y + 34), TEXT)
     grade_x = card.x + 92 if len(grade) > 3 else card.x + 126
@@ -592,10 +590,10 @@ def draw_frame(
     draw_roads(pygame, surface)
     for station_id in range(3):
         draw_station_tile(pygame, surface, fonts, station_id, info)
-    draw_status_tile(pygame, surface, fonts, info)
+    draw_truck(pygame, surface, fonts, info, progress)
+    draw_truck_load_hud(pygame, surface, fonts, info)
     draw_metric_panel(pygame, surface, fonts, info)
     draw_timeline(pygame, surface, fonts, steps, step_index)
-    draw_truck(pygame, surface, fonts, info, progress)
     draw_hud(surface, fonts, info, paused, hold_phase)
     if ended:
         draw_episode_summary(pygame, surface, fonts, info)
@@ -616,11 +614,11 @@ def replay_window(
     pygame.display.set_caption("Ddareungi FrozenLake-style Replay")
     clock = pygame.time.Clock()
     fonts = {
-        "title": select_font(pygame, 26, bold=True),
-        "body": select_font(pygame, 22),
-        "small": select_font(pygame, 17),
-        "tiny": select_font(pygame, 14),
-        "metric": select_font(pygame, 42, bold=True),
+        "title": select_font(pygame, 28, bold=True),
+        "body": select_font(pygame, 23),
+        "small": select_font(pygame, 18),
+        "tiny": select_font(pygame, 15),
+        "metric": select_font(pygame, 46, bold=True),
     }
 
     steps = step_records(records)

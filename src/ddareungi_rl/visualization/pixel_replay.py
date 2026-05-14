@@ -106,7 +106,7 @@ def render_frame(record: dict[str, Any], color: bool = True) -> str:
     work = station_tile(STATION_NAMES[1], 1, int(station_bikes[1]), truck_location, color)
     park = station_tile(STATION_NAMES[2], 2, int(station_bikes[2]), truck_location, color)
     load_text = padded_color(str(truck_bikes), 7, BLUE, color)
-    depot = [
+    truck_load_tile = [
         f" {padded_color(STATUS_TILE_NAME, 10, BOLD, color)}   ",
         f" load {load_text} ",
     ]
@@ -125,8 +125,8 @@ def render_frame(record: dict[str, Any], color: bool = True) -> str:
             f"|{home[0]}|{work[0]}|",
             f"|{home[1]}|{work[1]}|",
             f"+--------------+--------------+",
-            f"|{park[0]}|{depot[0]}|",
-            f"|{park[1]}|{depot[1]}|",
+            f"|{park[0]}|{truck_load_tile[0]}|",
+            f"|{park[1]}|{truck_load_tile[1]}|",
             f"+--------------+--------------+",
             f"time={time_step:02d}/24  action={action}  reward={reward_text}",
             f"unmet={unmet_text}  full_returns={full_text}  move_cost={movement_cost}",

@@ -1,8 +1,11 @@
 import unittest
 
 from ddareungi_rl.visualization.pygame_replay import (
+    WINDOW_HEIGHT,
+    WINDOW_WIDTH,
     action_reason,
     draw_timeline,
+    draw_truck_load_hud,
     episode_grade,
     face_mood,
     format_action,
@@ -14,6 +17,7 @@ from ddareungi_rl.visualization.pygame_replay import (
     replay_window,
     require_pygame,
     select_font,
+    station_positions,
     station_risk,
     stock_color,
     truck_position,
@@ -127,7 +131,34 @@ class PygameReplayTest(unittest.TestCase):
             1.0,
         )
 
-        self.assertLess(pos[1], 390)
+        self.assertLess(pos[1], station_positions()[2][1])
+
+    def test_station_positions_only_include_stations(self):
+        """pygame 지도 좌표가 실제 action 대상인 대여소만 포함하는지 검증한다."""
+        self.assertEqual(set(station_positions()), {0, 1, 2})
+
+    def test_draw_truck_load_hud_runs_without_extra_action_tile(self):
+        """중앙 트럭 적재 HUD가 dummy surface에서 렌더링되는지 검증한다."""
+        import os
+
+        os.environ["SDL_VIDEODRIVER"] = "dummy"
+        pygame = require_pygame()
+        pygame.init()
+        pygame.font.init()
+        surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+        fonts = {
+            "body": select_font(pygame, 22),
+            "tiny": select_font(pygame, 14),
+        }
+
+        draw_truck_load_hud(
+            pygame,
+            surface,
+            fonts,
+            {"truck_bikes": 3, "truck_capacity": 5, "unmet_demand": 0},
+        )
+
+        pygame.quit()
 
     def test_replay_window_runs_with_dummy_video(self):
         """dummy video driver에서 1-step 창 replay가 종료되는지 검증한다."""
@@ -170,7 +201,7 @@ class PygameReplayTest(unittest.TestCase):
         pygame = require_pygame()
         pygame.init()
         pygame.font.init()
-        surface = pygame.Surface((1120, 760))
+        surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
         fonts = {"tiny": select_font(pygame, 14)}
         steps = [
             {"info": {"reward": 1, "unmet_demand": 0}},
