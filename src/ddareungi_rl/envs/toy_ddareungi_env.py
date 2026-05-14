@@ -99,6 +99,10 @@ class ToyDdareungiEnv:
         """정규화된 observation vector의 길이를 반환한다."""
         return self.config.station_count + 3
 
+    def current_observation(self) -> list[float]:
+        """현재 환경 상태의 정규화된 observation vector를 반환한다."""
+        return self._observation()
+
     def reset(self, seed: int | None = None) -> tuple[list[float], dict[str, object]]:
         """새 episode를 시작하고 초기 observation과 info를 반환한다."""
         if seed is not None:

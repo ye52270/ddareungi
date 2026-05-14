@@ -1,4 +1,4 @@
-"""V0 baseline policy를 평가한다."""
+"""V0/V1 policy를 같은 metric으로 평가한다."""
 
 from __future__ import annotations
 
@@ -9,12 +9,13 @@ from pathlib import Path
 from statistics import mean
 from typing import Literal
 
+from ddareungi_rl.agents import DQNPolicy
 from ddareungi_rl.envs import ToyDdareungiEnv
 from ddareungi_rl.policies import LowStockPolicy, RandomPolicy
 from ddareungi_rl.policies.baselines import Policy
 
 
-PolicyName = Literal["random", "low-stock"]
+PolicyName = Literal["random", "low-stock", "dqn"]
 RenderChoice = Literal["none", "ansi", "human"]
 
 
@@ -32,12 +33,20 @@ class EpisodeResult:
     log: list[dict[str, object]]
 
 
-def make_policy(name: PolicyName, seed: int | None = None) -> Policy:
-    """CLI policy 이름으로 baseline policy 인스턴스를 만든다."""
+def make_policy(
+    name: PolicyName,
+    seed: int | None = None,
+    model_path: Path | None = None,
+) -> Policy:
+    """CLI policy 이름으로 평가용 policy 인스턴스를 만든다."""
     if name == "random":
         return RandomPolicy(seed=seed)
     if name == "low-stock":
         return LowStockPolicy()
+    if name == "dqn":
+        if model_path is None:
+            raise ValueError("--model-path is required when --policy dqn")
+        return DQNPolicy(model_path)
     raise ValueError(f"Unknown policy: {name}")
 
 
@@ -79,7 +88,9 @@ def run_episode(
         total_full_returns += int(step_info["full_returns"])
         total_movement_cost += int(step_info["movement_cost"])
         step_info["policy_name"] = policy_name
-        step_info["learning_stage"] = "학습 전 기준 정책"
+        step_info["learning_stage"] = (
+            "DQN greedy 평가" if policy_name == "dqn" else "학습 전 기준 정책"
+        )
         step_info["episode_reward_so_far"] = episode_reward
         step_info["episode_served_demand_so_far"] = total_served
         step_info["episode_unmet_demand_so_far"] = total_unmet
@@ -130,11 +141,12 @@ def evaluate(
     episodes: int,
     seed: int,
     render_mode: RenderChoice,
+    model_path: Path | None = None,
 ) -> list[EpisodeResult]:
-    """하나의 baseline policy를 여러 seed episode로 평가한다."""
+    """하나의 policy를 여러 seed episode로 평가한다."""
     env_render_mode = "human" if render_mode == "human" else None
     env = ToyDdareungiEnv(render_mode=env_render_mode, seed=seed)
-    policy = make_policy(policy_name, seed=seed)
+    policy = make_policy(policy_name, seed=seed, model_path=model_path)
 
     results = []
     for episode in range(episodes):
@@ -165,12 +177,12 @@ def save_episode_log(result: EpisodeResult, output_path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     """baseline 평가용 command-line argument를 파싱한다."""
-    parser = argparse.ArgumentParser(description="Evaluate V0 Ddareungi baseline policies.")
+    parser = argparse.ArgumentParser(description="Evaluate Ddareungi policies on the toy MDP.")
     parser.add_argument(
         "--policy",
-        choices=["random", "low-stock"],
+        choices=["random", "low-stock", "dqn"],
         default="random",
-        help="Baseline policy to evaluate.",
+        help="Policy to evaluate.",
     )
     parser.add_argument("--episodes", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
@@ -186,6 +198,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional path for the first episode replay log JSON.",
     )
+    parser.add_argument(
+        "--model-path",
+        type=Path,
+        default=None,
+        help="Saved DQN model path. Required when --policy dqn.",
+    )
     return parser.parse_args()
 
 
@@ -197,6 +215,7 @@ def main() -> None:
         episodes=args.episodes,
         seed=args.seed,
         render_mode=args.render_mode,
+        model_path=args.model_path,
     )
 
     if args.save_log is not None:

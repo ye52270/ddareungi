@@ -131,7 +131,7 @@ PYTHONPATH=src python3 -m ddareungi_rl.training.evaluate --policy low-stock --ep
 
 현재 `ansi`는 평가 코드가 환경의 text frame을 받아 출력하고, `human`은 `ToyDdareungiEnv.step()`이 직접 frame을 출력한다. 이후 픽셀/타일 기반 시각화는 학습 코드와 직접 연결하지 않고, 저장된 episode log를 replay하는 방식으로 확장한다.
 
-현재 구현은 DQN 학습 전 단계다. 즉, 환경과 baseline 평가, episode log 저장은 구현되어 있지만 DQN 학습 코드는 아직 다음 단계로 남아 있다.
+현재 구현은 V0 baseline을 기준선으로 고정하고, 같은 MDP 위에서 V1 DQN 학습과 greedy 평가를 실행할 수 있는 단계다. 짧은 학습 결과는 기능 확인용 smoke check로 보고, 성능 주장은 held-out seed 묶음에서 baseline과 비교한 뒤에만 한다.
 
 ### V0 반납 패턴
 
@@ -690,16 +690,26 @@ state
   -> main network 업데이트
 ```
 
-예상 네트워크 구조:
+현재 V1 구현은 외부 딥러닝 의존성을 추가하지 않고, 순수 Python으로 작성한 작은 one-hidden-layer MLP Q-network를 사용한다. Python 3.14 환경에서 PyTorch 설치 리스크를 줄이고, toy MDP의 학습 루프를 먼저 검증하기 위한 선택이다. 구조는 DQN의 핵심 요소인 replay buffer, target network, epsilon-greedy exploration, greedy evaluation을 유지한다.
+
+현재 네트워크 구조:
 
 | 항목 | 내용 |
 |---|---|
 | 입력 | 6차원 state |
 | 출력 | 3개 action의 Q-value |
-| hidden layer | 64 또는 128 units, ReLU |
-| 구조 | Linear -> ReLU -> Linear -> ReLU -> Linear |
+| hidden layer | 기본 32 units, ReLU |
+| 구조 | Linear -> ReLU -> Linear |
+| 저장 형식 | JSON model file |
 
-처음에는 elevator-dqn 프로젝트처럼 작은 구조로 시작하고, 학습 결과가 안정적으로 나오면 알고리즘과 환경을 확장한다.
+V1에서 학습과 평가는 다음 명령으로 분리한다.
+
+```bash
+ddareungi-train-dqn --episodes 300 --seed 42 --model-out outputs/models/dqn_v1.json
+ddareungi-evaluate --policy dqn --model-path outputs/models/dqn_v1.json --episodes 20 --seed 1000
+```
+
+학습 중에는 epsilon-greedy로 탐험하지만, 평가 시에는 저장된 모델을 불러와 greedy action만 사용한다. 따라서 DQN 성능은 학습 중 episode reward가 아니라, baseline과 동일한 seed 묶음에서 별도로 실행한 evaluation 결과로 비교한다.
 
 ## Baseline
 
@@ -730,20 +740,25 @@ Random policy는 DQN이 최소한 무작위보다 나은지 확인하기 위한 
 | 비교 | Random policy, Low-stock policy |
 | 결과 | reward curve, unmet demand 비교 |
 
-### V1: Algorithm Menu
+### V1: DQN 학습과 평가
 
-목표는 사용자가 콘솔 메뉴에서 알고리즘을 선택할 수 있게 하는 것이다.
+목표는 같은 `ToyDdareungiEnv`에서 DQN을 학습하고, 저장된 모델을 불러와 Random 및 Low-stock baseline과 같은 지표로 비교하는 것이다.
 
-예상 메뉴:
+현재 CLI:
 
 ```text
-1. Random policy 평가
-2. Low-stock policy 평가
-3. DQN 학습
-4. DQN 평가
+ddareungi-train-dqn
+ddareungi-evaluate --policy dqn --model-path ...
 ```
 
-이 단계에서는 아직 환경은 V0와 동일하게 유지한다. 환경을 바꾸기 전에 실행 구조를 먼저 정리한다.
+이 단계에서는 환경과 reward를 V0와 동일하게 유지한다. 환경을 바꾸기 전에 DQN 학습, 저장, 로드, greedy 평가가 baseline 비교 루프와 연결되는지 먼저 검증한다.
+
+V1에서 아직 주장하지 않는 것:
+
+- DQN이 항상 baseline보다 우수하다는 주장
+- 실제 따릉이 운영 최적화
+- Double DQN 또는 Dueling DQN의 우수성
+- 재배치 수량까지 학습했다는 주장
 
 ### V2: Double DQN 확장
 
