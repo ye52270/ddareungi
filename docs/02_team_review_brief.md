@@ -13,7 +13,7 @@
 ```text
 src/ddareungi_rl/
   envs/toy_ddareungi_env.py      Toy MDP 환경
-  policies/baselines.py          Random, Low-stock baseline
+  policies/baselines.py          Random, Low-stock, Demand-aware baseline
   agents/dqn.py                  순수 Python toy DQN
   training/train_dqn.py          DQN 학습
   training/evaluate.py           baseline/DQN 평가
@@ -29,7 +29,7 @@ src/ddareungi_rl/
 | Action | 다음에 방문할 대여소 선택 `{0, 1, 2}` | 처음 toy 문제로 적절한 단순화인가 |
 | Reward | `-10 * unmet_demand - movement_cost` | 헛걸음 감소 목표와 일치하는가 |
 | Environment | 3개 대여소, 트럭 1대, 24 step 하루 운영 | 과제 범위에서 설명 가능한가 |
-| Policy | Random, Low-stock, DQN greedy | baseline 비교가 공정한가 |
+| Policy | Random, Low-stock, Demand-aware, DQN greedy | baseline 비교가 공정한가 |
 
 ## 학습 방법
 
@@ -53,7 +53,7 @@ ddareungi
 
 | 메뉴 | 용도 |
 |---|---|
-| 1 | Random/Low-stock baseline 평가 |
+| 1 | Random/Low-stock/Demand-aware baseline 평가 |
 | 2 | DQN(Small) 학습 |
 | 3 | 저장된 DQN(Small) greedy 평가 |
 | 4 | baseline 평가 후 visualization |
@@ -67,14 +67,16 @@ ddareungi
 - baseline, DQN 학습, DQN 평가, visualization이 같은 toy MDP 위에서 실행된다.
 - episode log 기반 replay라서 학습 코드와 시각화 코드가 분리되어 있다.
 - 테스트가 있어 메뉴와 GUI 종료 흐름을 확인할 수 있다.
+- action distribution과 same-location rate로 트럭이 한 위치에 치우치는지 확인할 수 있다.
 
 ## 오늘 조원에게 물어볼 질문
 
 1. Reward에서 헛걸음 패널티 `-10`과 이동비용 `-1`의 비율이 직관적인가?
 2. action을 “방문 대여소 선택”으로 제한한 것이 V0 toy 문제로 적절한가?
 3. DQN 성능 비교는 어떤 지표를 중심으로 보여주는 것이 가장 설득력 있는가?
-4. 다음 단계에서 PyTorch DQN으로 넘어갈 때 기존 순수 Python DQN을 유지할지, 교체할지?
-5. 실제 따릉이 데이터로 확장하기 전에 reward에 반납 실패도 넣어야 하는가?
+4. Demand-aware baseline보다 DQN이 좋아지려면 state/action/reward를 어떻게 바꿔야 하는가?
+5. 다음 단계에서 PyTorch DQN으로 넘어갈 때 기존 순수 Python DQN을 유지할지, 교체할지?
+6. 실제 따릉이 데이터로 확장하기 전에 reward에 반납 실패도 넣어야 하는가?
 
 ## PPT 또는 Word로 만들 수 있는 구성
 

@@ -37,3 +37,37 @@ class LowStockPolicy:
             if env.station_bikes[station_id] < env.station_bikes[lowest_stock_station]:
                 lowest_stock_station = station_id
         return lowest_stock_station
+
+
+class DemandAwarePolicy:
+    """현재 시간대의 예상 수요 부족분이 가장 큰 대여소를 방문하는 policy다."""
+
+    def select_action(self, env: ToyDdareungiEnv) -> int:
+        """예상 수요와 현재 재고 차이가 가장 큰 대여소를 선택한다."""
+        expected_demand = self._expected_demand(env)
+        best_station = 0
+        best_score = self._shortage_score(env, expected_demand, 0)
+        for station_id in range(1, env.action_space_n):
+            score = self._shortage_score(env, expected_demand, station_id)
+            if score > best_score:
+                best_station = station_id
+                best_score = score
+        return best_station
+
+    def _expected_demand(self, env: ToyDdareungiEnv) -> list[float]:
+        """환경의 현재 시간대 demand pattern에서 대여소별 기대 수요를 계산한다."""
+        hour = env.time_step % env.config.episode_steps
+        for time_range, station_ranges in env.config.demand_pattern.items():
+            if hour in time_range:
+                return [(low + high) / 2 for low, high in station_ranges]
+        return [0.0 for _ in range(env.action_space_n)]
+
+    def _shortage_score(
+        self,
+        env: ToyDdareungiEnv,
+        expected_demand: list[float],
+        station_id: int,
+    ) -> tuple[float, int]:
+        """예상 수요 부족분과 낮은 재고를 함께 반영한 정렬 점수를 반환한다."""
+        shortage = expected_demand[station_id] - env.station_bikes[station_id]
+        return (shortage, -env.station_bikes[station_id])

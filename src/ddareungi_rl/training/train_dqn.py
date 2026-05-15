@@ -53,6 +53,8 @@ def train_dqn(
         total_unmet = 0
         total_full_returns = 0
         total_movement_cost = 0
+        action_counts = {station_id: 0 for station_id in range(env.action_space_n)}
+        same_location_actions = 0
         losses: list[float] = []
         log: list[dict[str, object]] = [
             {
@@ -65,6 +67,13 @@ def train_dqn(
         while not done:
             epsilon = agent.epsilon(global_step)
             action = agent.select_action(state, epsilon)
+            previous_location = env.truck_location
+            action_counts[action] = action_counts.get(action, 0) + 1
+            if action == previous_location:
+                same_location_actions += 1
+
+            # env.step()은 Gymnasium 스타일 transition tuple을 반환한다.
+            # 현재 환경에서는 terminated는 항상 False이고, 24 step이 끝나면 truncated가 True가 된다.
             next_state, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             agent.remember(Transition(state, action, reward, next_state, done))
@@ -124,6 +133,8 @@ def train_dqn(
             movement_cost=total_movement_cost,
             steps=len(log) - 1,
             log=log,
+            action_counts=action_counts,
+            same_location_actions=same_location_actions,
         )
 
     env.close()

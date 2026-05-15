@@ -6,7 +6,14 @@ from pathlib import Path
 from statistics import mean
 
 from ddareungi_rl.agents import DQNConfig
-from ddareungi_rl.training.evaluate import EpisodeResult, evaluate, save_episode_log, service_rate
+from ddareungi_rl.training.evaluate import (
+    EpisodeResult,
+    aggregate_action_counts,
+    evaluate,
+    same_location_rate,
+    save_episode_log,
+    service_rate,
+)
 from ddareungi_rl.training.train_dqn import save_metrics, train_dqn
 from ddareungi_rl.visualization.demo import create_demo_log
 from ddareungi_rl.visualization.pixel_replay import load_episode_log
@@ -32,6 +39,8 @@ def summarize_results(policy_name: str, results: list[EpisodeResult]) -> str:
             f"avg_service_rate={mean(service_rate(result.served_demand, result.total_demand) for result in results):.2%}",
             f"avg_full_returns={mean(result.full_returns for result in results):.2f}",
             f"avg_movement_cost={mean(result.movement_cost for result in results):.2f}",
+            f"action_distribution={aggregate_action_counts(results)}",
+            f"same_location_rate={same_location_rate(results):.2%}",
         ]
     )
 
@@ -41,10 +50,11 @@ def run_baseline_suite(
     seed: int = 42,
     save_low_stock_log: Path | None = None,
 ) -> dict[str, list[EpisodeResult]]:
-    """Random과 Low-stock baseline을 같은 seed 묶음에서 평가한다."""
+    """Random, Low-stock, Demand-aware baseline을 같은 seed 묶음에서 평가한다."""
     results = {
         "random": evaluate("random", episodes=episodes, seed=seed, render_mode="none"),
         "low-stock": evaluate("low-stock", episodes=episodes, seed=seed, render_mode="none"),
+        "demand-aware": evaluate("demand-aware", episodes=episodes, seed=seed, render_mode="none"),
     }
     if save_low_stock_log is not None:
         save_episode_log(results["low-stock"][0], save_low_stock_log)
@@ -113,7 +123,7 @@ def print_menu() -> None:
     """콘솔 메뉴 항목을 출력한다."""
     print()
     print("Ddareungi RL Toy MDP")
-    print("1. Baseline 평가(Random + Low-stock)")
+    print("1. Baseline 평가(Random + Low-stock + Demand-aware)")
     print("2. DQN(Small) 학습")
     print("3. DQN(Small) 평가")
     print("4. Baseline 평가 + visualization")

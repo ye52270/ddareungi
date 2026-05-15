@@ -11,11 +11,11 @@ from typing import Literal
 
 from ddareungi_rl.agents import DQNPolicy
 from ddareungi_rl.envs import ToyDdareungiEnv
-from ddareungi_rl.policies import LowStockPolicy, RandomPolicy
+from ddareungi_rl.policies import DemandAwarePolicy, LowStockPolicy, RandomPolicy
 from ddareungi_rl.policies.baselines import Policy
 
 
-PolicyName = Literal["random", "low-stock", "dqn"]
+PolicyName = Literal["random", "low-stock", "demand-aware", "dqn"]
 RenderChoice = Literal["none", "ansi", "human"]
 
 
@@ -31,6 +31,8 @@ class EpisodeResult:
     movement_cost: int
     steps: int
     log: list[dict[str, object]]
+    action_counts: dict[int, int]
+    same_location_actions: int
 
 
 def make_policy(
@@ -43,6 +45,8 @@ def make_policy(
         return RandomPolicy(seed=seed)
     if name == "low-stock":
         return LowStockPolicy()
+    if name == "demand-aware":
+        return DemandAwarePolicy()
     if name == "dqn":
         if model_path is None:
             raise ValueError("--model-path is required when --policy dqn")
@@ -66,6 +70,8 @@ def run_episode(
     total_demand = 0
     total_full_returns = 0
     total_movement_cost = 0
+    action_counts = {station_id: 0 for station_id in range(env.action_space_n)}
+    same_location_actions = 0
     log: list[dict[str, object]] = [
         {
             "event": "reset",
@@ -79,6 +85,10 @@ def run_episode(
 
     while not done:
         action = policy.select_action(env)
+        previous_location = env.truck_location
+        action_counts[action] = action_counts.get(action, 0) + 1
+        if action == previous_location:
+            same_location_actions += 1
         next_state, reward, terminated, truncated, step_info = env.step(action)
         done = terminated or truncated
         episode_reward += reward
@@ -126,6 +136,8 @@ def run_episode(
         movement_cost=total_movement_cost,
         steps=len(log) - 1,
         log=log,
+        action_counts=action_counts,
+        same_location_actions=same_location_actions,
     )
 
 
@@ -134,6 +146,22 @@ def service_rate(served_demand: int, total_demand: int) -> float:
     if total_demand == 0:
         return 1.0
     return served_demand / total_demand
+
+
+def aggregate_action_counts(results: list[EpisodeResult]) -> dict[int, int]:
+    """여러 episode의 action 선택 횟수를 action id별로 합산한다."""
+    return {
+        action: sum(result.action_counts.get(action, 0) for result in results)
+        for action in sorted({action for result in results for action in result.action_counts})
+    }
+
+
+def same_location_rate(results: list[EpisodeResult]) -> float:
+    """여러 episode에서 현재 위치를 다시 선택한 action 비율을 반환한다."""
+    total_steps = sum(result.steps for result in results)
+    if total_steps == 0:
+        return 0.0
+    return sum(result.same_location_actions for result in results) / total_steps
 
 
 def evaluate(
@@ -180,7 +208,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate Ddareungi policies on the toy MDP.")
     parser.add_argument(
         "--policy",
-        choices=["random", "low-stock", "dqn"],
+        choices=["random", "low-stock", "demand-aware", "dqn"],
         default="random",
         help="Policy to evaluate.",
     )
@@ -229,6 +257,8 @@ def main() -> None:
     print(f"avg_service_rate={mean(service_rate(r.served_demand, r.total_demand) for r in results):.2%}")
     print(f"avg_full_returns={mean(r.full_returns for r in results):.2f}")
     print(f"avg_movement_cost={mean(r.movement_cost for r in results):.2f}")
+    print(f"action_distribution={aggregate_action_counts(results)}")
+    print(f"same_location_rate={same_location_rate(results):.2%}")
 
 
 if __name__ == "__main__":

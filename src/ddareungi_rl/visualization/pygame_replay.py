@@ -117,23 +117,20 @@ def face_mood(bikes: int, demand: int = 0) -> str:
     return "smile"
 
 
-def action_reason(info: dict[str, Any]) -> str:
-    """현재 action이 어떤 부족 위험에 대응하는지 짧게 설명한다."""
-    action = int(info.get("action", info.get("truck_location", 0)))
-    station_bikes = info.get("station_bikes", [0, 0, 0])
-    demand = info.get("demand", [0, 0, 0])
-    bikes = int(station_bikes[action]) if action < len(station_bikes) else 0
-    requested = int(demand[action]) if action < len(demand) else 0
-
+def action_outcome_text(info: dict[str, Any]) -> str:
+    """현재 action의 사후 결과를 짧게 설명한다."""
+    if bool(info.get("same_location_action", False)):
+        return "현 위치 유지 · 이동비용 0"
     if int(info.get("unmet_demand", 0)) > 0:
-        return "헛걸음 발생 지점 확인"
-    if int(info.get("movement_cost", 0)) == 0:
-        return "같은 대여소 상태 유지"
-    if requested >= bikes:
-        return "부족 위험 대여소 대응"
-    if bikes <= 2:
-        return "낮은 재고 보강"
-    return "선택 효과 확인"
+        return "선택 결과: 헛걸음 발생"
+    if int(info.get("rebalance_amount", 0)) > 0:
+        return "선택 결과: 재배치 수행"
+    return "선택 결과: 수요 방어"
+
+
+def action_reason(info: dict[str, Any]) -> str:
+    """이전 테스트/호출 호환을 위해 action 결과 문구를 반환한다."""
+    return action_outcome_text(info)
 
 
 def format_rebalance(info: dict[str, Any]) -> str:
@@ -158,7 +155,8 @@ def format_policy_name(info: dict[str, Any]) -> str:
     policy_name = str(info.get("policy_name", "baseline"))
     labels = {
         "random": "무작위 기준 정책",
-        "low-stock": "부족 대여소 우선 정책",
+        "low-stock": "현재 재고 최저 정책",
+        "demand-aware": "예상 수요 부족 정책",
         "baseline": "기준 정책",
     }
     return labels.get(policy_name, policy_name)
@@ -169,6 +167,8 @@ def format_action(info: dict[str, Any]) -> str:
     action = int(info.get("action", info.get("truck_location", 0)))
     names = info.get("station_names", STATION_NAMES)
     station_name = names[action] if isinstance(names, list) and action < len(names) else str(action)
+    if bool(info.get("same_location_action", False)):
+        return f"{station_name} 현 위치 유지"
     return f"{station_name} 방문"
 
 
@@ -388,12 +388,16 @@ def draw_station_tile(
     draw_text(surface, fonts["small"], name, (x + 20, y + 18), TEXT)
     draw_small_pill(pygame, surface, fonts, risk_label, (x + 126, y + 18), risk_color)
     draw_bike_icon(pygame, surface, (x + 26, y + 74), BLUE)
+    draw_text(surface, fonts["tiny"], "결과 재고", (x + 84, y + 48), MUTED)
     draw_text(surface, fonts["metric"], f"{bikes:02d}", (x + 82, y + 54), TEXT)
     draw_text(surface, fonts["small"], "대", (x + 156, y + 90), MUTED)
     draw_face_icon(pygame, surface, (x + 42, y + 155), mood, risk_color)
     draw_text(surface, fonts["small"], f"수요 {requested}", (x + 78, y + 136), TEXT)
     draw_text(surface, fonts["small"], f"반납 {returns[station_id]}", (x + 78, y + 162), MUTED)
 
+    decision_bikes = info.get("decision_station_bikes", info.get("previous_station_bikes", []))
+    if isinstance(decision_bikes, list) and station_id < len(decision_bikes):
+        draw_text(surface, fonts["tiny"], f"선택전 {int(decision_bikes[station_id])}대", (x + 20, y + 188), MUTED)
     if int(info.get("rebalance_station", -1)) == station_id and int(info.get("rebalance_amount", 0)) > 0:
         draw_text(surface, fonts["tiny"], format_rebalance(info), (x + 20, y + 188), BLUE)
 
@@ -443,10 +447,11 @@ def draw_metric_panel(
     draw_text(surface, fonts["metric"], f"{cumulative_reward:+.0f}", (PANEL_X + 24, PANEL_Y + 264), cumulative_color)
     draw_text(surface, fonts["small"], f"이번 {reward:+.0f}", (PANEL_X + 164, PANEL_Y + 292), GREEN if reward >= 0 else RED)
 
-    draw_text(surface, fonts["small"], action_reason(info), (PANEL_X + 24, PANEL_Y + 336), BLUE)
-    draw_text(surface, fonts["small"], "헛걸음", (PANEL_X + 24, PANEL_Y + 370), MUTED)
-    draw_text(surface, fonts["body"], f"{cumulative_unmet}건", (PANEL_X + 24, PANEL_Y + 394), RED if cumulative_unmet else GREEN)
-    draw_text(surface, fonts["small"], f"누적 이동 {cumulative_movement}", (PANEL_X + 144, PANEL_Y + 400), MUTED)
+    draw_text(surface, fonts["small"], "이번 step 결과", (PANEL_X + 24, PANEL_Y + 330), MUTED)
+    draw_text(surface, fonts["small"], action_outcome_text(info), (PANEL_X + 24, PANEL_Y + 360), BLUE)
+    draw_text(surface, fonts["small"], "헛걸음", (PANEL_X + 24, PANEL_Y + 404), MUTED)
+    draw_text(surface, fonts["body"], f"{cumulative_unmet}건", (PANEL_X + 24, PANEL_Y + 428), RED if cumulative_unmet else GREEN)
+    draw_text(surface, fonts["small"], f"누적 이동 {cumulative_movement}", (PANEL_X + 144, PANEL_Y + 434), MUTED)
 
 
 def draw_timeline(

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from ddareungi_rl.agents import DQNConfig
-from ddareungi_rl.training.evaluate import evaluate
+from ddareungi_rl.training.evaluate import aggregate_action_counts, evaluate, same_location_rate
 from ddareungi_rl.training.train_dqn import save_metrics, train_dqn
 
 
@@ -59,6 +59,8 @@ class TrainDQNTest(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].steps, 24)
+        self.assertEqual(sum(aggregate_action_counts(results).values()), 24)
+        self.assertGreaterEqual(same_location_rate(results), 0.0)
 
 
 if __name__ == "__main__":

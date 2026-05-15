@@ -75,7 +75,7 @@ class PygameReplayTest(unittest.TestCase):
         """low-stock policy 이름을 화면용 label로 변환하는지 검증한다."""
         self.assertEqual(
             format_policy_name({"policy_name": "low-stock"}),
-            "부족 대여소 우선 정책",
+            "현재 재고 최저 정책",
         )
 
     def test_station_risk_marks_shortage(self):
@@ -88,19 +88,26 @@ class PygameReplayTest(unittest.TestCase):
         """수요가 재고보다 크면 화난 얼굴 mood를 반환하는지 검증한다."""
         self.assertEqual(face_mood(bikes=1, demand=3), "angry")
 
-    def test_action_reason_mentions_shortage_response(self):
-        """action 설명이 부족 위험 대응 이유를 반환하는지 검증한다."""
+    def test_action_reason_describes_step_outcome(self):
+        """action 설명이 선택 이유가 아니라 step 결과를 반환하는지 검증한다."""
         reason = action_reason(
             {
                 "action": 1,
                 "station_bikes": [5, 1, 6],
                 "demand": [1, 2, 1],
-                "unmet_demand": 0,
+                "unmet_demand": 2,
                 "movement_cost": 1,
             }
         )
 
-        self.assertIn("부족", reason)
+        self.assertIn("선택 결과", reason)
+        self.assertIn("헛걸음", reason)
+
+    def test_action_reason_marks_same_location_action(self):
+        """같은 대여소를 다시 선택하면 현 위치 유지로 설명하는지 검증한다."""
+        reason = action_reason({"same_location_action": True, "movement_cost": 0})
+
+        self.assertIn("현 위치 유지", reason)
 
     def test_mission_status_marks_unmet_as_failure(self):
         """미충족 수요가 있는 step을 실패 신호로 표시하는지 검증한다."""

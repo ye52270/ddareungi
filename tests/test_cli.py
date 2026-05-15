@@ -32,6 +32,8 @@ class CLITest(unittest.TestCase):
 
         self.assertIn("avg_reward", summary)
         self.assertIn("avg_unmet_demand", summary)
+        self.assertIn("action_distribution", summary)
+        self.assertIn("same_location_rate", summary)
 
     def test_dqn_menu_training_and_evaluation_helpers_run(self):
         """DQN 메뉴 helper가 학습 모델을 만들고 평가까지 실행하는지 검증한다."""
