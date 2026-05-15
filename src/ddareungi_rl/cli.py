@@ -15,6 +15,11 @@ from ddareungi_rl.training.evaluate import (
     service_rate,
 )
 from ddareungi_rl.training.train_dqn import save_metrics, train_dqn
+from ddareungi_rl.training.train_torch_dqn import (
+    TorchDQNConfig,
+    save_torch_metrics,
+    train_torch_dqn,
+)
 from ddareungi_rl.visualization.demo import create_demo_log
 from ddareungi_rl.visualization.pixel_replay import load_episode_log
 from ddareungi_rl.visualization.pygame_replay import replay_window
@@ -26,6 +31,10 @@ DEFAULT_TRAIN_LOG_PATH = Path("outputs/logs/dqn_small_train_episode.json")
 DEFAULT_EVAL_LOG_PATH = Path("outputs/logs/dqn_small_eval_episode.json")
 DEFAULT_BASELINE_LOG_PATH = Path("outputs/logs/baseline_low_stock_episode.json")
 DEFAULT_DEMO_LOG_PATH = Path("outputs/demo_episode.json")
+DEFAULT_TORCH_MODEL_PATH = Path("outputs/models/torch_dqn_small.pt")
+DEFAULT_TORCH_METRICS_PATH = Path("outputs/metrics/torch_dqn_small_metrics.json")
+DEFAULT_TORCH_TRAIN_LOG_PATH = Path("outputs/logs/torch_dqn_small_train_episode.json")
+DEFAULT_TORCH_EVAL_LOG_PATH = Path("outputs/logs/torch_dqn_small_eval_episode.json")
 
 
 def summarize_results(policy_name: str, results: list[EpisodeResult]) -> str:
@@ -107,6 +116,52 @@ def run_dqn_small_evaluation(
     return results
 
 
+def run_torch_dqn_training(
+    episodes: int = 100,
+    seed: int = 42,
+    model_path: Path = DEFAULT_TORCH_MODEL_PATH,
+    metrics_path: Path = DEFAULT_TORCH_METRICS_PATH,
+    log_path: Path = DEFAULT_TORCH_TRAIN_LOG_PATH,
+) -> Path:
+    """PyTorch DQN smoke 학습을 실행하고 모델/metrics/log를 저장한다."""
+    config = TorchDQNConfig()
+    agent, metrics, last_result = train_torch_dqn(episodes=episodes, seed=seed, config=config)
+    agent.save(model_path)
+    save_torch_metrics(metrics, metrics_path)
+    save_episode_log(last_result, log_path)
+    last_metric = metrics[-1]
+    print("PyTorch DQN training complete")
+    print(f"episodes={episodes}")
+    print(f"model={model_path}")
+    print(f"metrics={metrics_path}")
+    print(f"training_last_reward={last_metric.episode_reward:.2f}")
+    print(f"training_last_unmet_demand={last_metric.unmet_demand}")
+    print("주의: training_last_* 값은 학습 중 epsilon-greedy 결과이며 성능 비교용이 아닙니다.")
+    return model_path
+
+
+def run_torch_dqn_evaluation(
+    episodes: int = 5,
+    seed: int = 1000,
+    model_path: Path = DEFAULT_TORCH_MODEL_PATH,
+    log_path: Path = DEFAULT_TORCH_EVAL_LOG_PATH,
+) -> list[EpisodeResult]:
+    """저장된 PyTorch DQN 모델을 held-out seed 묶음에서 greedy 평가한다."""
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"{model_path}가 없습니다. 먼저 메뉴 6번으로 PyTorch DQN을 학습하세요."
+        )
+    results = evaluate(
+        "torch-dqn",
+        episodes=episodes,
+        seed=seed,
+        render_mode="none",
+        model_path=model_path,
+    )
+    save_episode_log(results[0], log_path)
+    return results
+
+
 def replay_log(log_path: Path, max_steps: int | None = None) -> None:
     """저장된 episode log를 pygame 창 replay로 실행한다."""
     records = load_episode_log(log_path)
@@ -128,6 +183,9 @@ def print_menu() -> None:
     print("3. DQN(Small) 평가")
     print("4. Baseline 평가 + visualization")
     print("5. DQN(Small) 평가 + visualization")
+    print("6. PyTorch DQN 학습")
+    print("7. PyTorch DQN 평가")
+    print("8. PyTorch DQN 평가 + visualization")
     print("0. 종료")
 
 
@@ -175,6 +233,35 @@ def run_choice(choice: str) -> bool:
         print("Visualization 조작: 창을 한 번 클릭한 뒤 Space 일시정지, Right 다음, R 다시보기, Q/Esc 창 닫기")
         print("참고: 메뉴 visualization은 창을 닫으면 프로그램도 종료됩니다.")
         replay_log(DEFAULT_EVAL_LOG_PATH)
+        print("Visualization 창을 닫았습니다. 프로그램을 종료합니다.")
+        return False
+    if choice == "6":
+        print("[PyTorch DQN 학습] seed=42, episodes=100")
+        try:
+            run_torch_dqn_training()
+        except ModuleNotFoundError as exc:
+            print(exc)
+        return True
+    if choice == "7":
+        print("[PyTorch DQN 평가] held-out seed=1000, episodes=5")
+        try:
+            results = run_torch_dqn_evaluation()
+        except (FileNotFoundError, ModuleNotFoundError) as exc:
+            print(exc)
+            return True
+        print(summarize_results("torch-dqn", results))
+        return True
+    if choice == "8":
+        print("[PyTorch DQN 평가 + visualization] held-out seed=1000, episodes=5")
+        try:
+            results = run_torch_dqn_evaluation()
+        except (FileNotFoundError, ModuleNotFoundError) as exc:
+            print(exc)
+            return True
+        print(summarize_results("torch-dqn", results))
+        print("Visualization 조작: 창을 한 번 클릭한 뒤 Space 일시정지, Right 다음, R 다시보기, Q/Esc 창 닫기")
+        print("참고: 메뉴 visualization은 창을 닫으면 프로그램도 종료됩니다.")
+        replay_log(DEFAULT_TORCH_EVAL_LOG_PATH)
         print("Visualization 창을 닫았습니다. 프로그램을 종료합니다.")
         return False
     if choice == "0":

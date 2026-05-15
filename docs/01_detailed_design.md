@@ -690,7 +690,12 @@ state
   -> main network 업데이트
 ```
 
-현재 V1 구현은 외부 딥러닝 의존성을 추가하지 않고, 순수 Python으로 작성한 작은 one-hidden-layer MLP Q-network를 사용한다. Python 3.14 환경에서 PyTorch 설치 리스크를 줄이고, toy MDP의 학습 루프를 먼저 검증하기 위한 선택이다. 구조는 DQN의 핵심 요소인 replay buffer, target network, epsilon-greedy exploration, greedy evaluation을 유지한다.
+현재 저장소에는 두 가지 DQN 구현이 공존한다.
+
+- V1: 외부 딥러닝 의존성 없이 순수 Python으로 작성한 one-hidden-layer MLP Q-network
+- V2: PyTorch `nn.Module`, Adam optimizer, tensor mini-batch를 사용하는 DQN
+
+V1은 backprop과 Bellman target을 코드로 직접 확인하기 위한 교육용 smoke prototype이다. V2는 수업/과제에서 일반적으로 기대하는 PyTorch 기반 DQN 구조를 같은 toy MDP 위에 연결한 구현이다. 두 구현 모두 replay buffer, target network, epsilon-greedy exploration, greedy evaluation을 유지한다.
 
 현재 네트워크 구조:
 
@@ -698,15 +703,22 @@ state
 |---|---|
 | 입력 | 6차원 state |
 | 출력 | 3개 action의 Q-value |
-| hidden layer | 기본 32 units, ReLU |
+| hidden layer | pure Python 기본 32 units, PyTorch 기본 64 units, ReLU |
 | 구조 | Linear -> ReLU -> Linear |
-| 저장 형식 | JSON model file |
+| 저장 형식 | pure Python은 JSON, PyTorch는 `.pt` model file |
 
 V1에서 학습과 평가는 다음 명령으로 분리한다.
 
 ```bash
 ddareungi-train-dqn --episodes 300 --seed 42 --model-out outputs/models/dqn_v1.json
 ddareungi-evaluate --policy dqn --model-path outputs/models/dqn_v1.json --episodes 20 --seed 1000
+```
+
+PyTorch DQN도 같은 방식으로 학습과 평가를 분리한다.
+
+```bash
+ddareungi-train-torch-dqn --episodes 300 --seed 42 --model-out outputs/models/torch_dqn_v1.pt
+ddareungi-evaluate --policy torch-dqn --model-path outputs/models/torch_dqn_v1.pt --episodes 20 --seed 1000
 ```
 
 학습 중에는 epsilon-greedy로 탐험하지만, 평가 시에는 저장된 모델을 불러와 greedy action만 사용한다. 따라서 DQN 성능은 학습 중 episode reward가 아니라, baseline과 동일한 seed 묶음에서 별도로 실행한 evaluation 결과로 비교한다.
@@ -721,8 +733,9 @@ V0에서는 최소한 다음 baseline을 둘 수 있다.
 |---|---|
 | Random policy | 매 step마다 무작위 대여소를 선택 |
 | Low-stock policy | 현재 자전거 수가 가장 적은 대여소를 선택 |
+| Demand-aware policy | 현재 시간대 기대 수요와 재고 차이가 가장 큰 대여소를 선택 |
 
-Random policy는 DQN이 최소한 무작위보다 나은지 확인하기 위한 기준이다. Low-stock policy는 사람이 생각할 수 있는 단순한 휴리스틱과 비교하기 위한 기준이다.
+Random policy는 DQN이 최소한 무작위보다 나은지 확인하기 위한 기준이다. Low-stock policy는 사람이 생각할 수 있는 단순한 휴리스틱과 비교하기 위한 기준이다. Demand-aware policy는 실제 샘플 demand를 미리 보는 oracle이 아니라, 시간대별 pattern의 평균 수요를 사용하는 진단용 heuristic이다.
 
 ## 단계별 개발 계획
 
@@ -736,13 +749,13 @@ Random policy는 DQN이 최소한 무작위보다 나은지 확인하기 위한 
 | 수요 | 직접 만든 시간대별 수요 패턴 |
 | action | 방문할 대여소 선택 |
 | reward | 미충족 수요 패널티 + 이동 비용 |
-| 알고리즘 | Random, Low-stock baseline 우선. DQN은 다음 milestone |
-| 비교 | Random policy, Low-stock policy |
+| 알고리즘 | Random, Low-stock, Demand-aware baseline 우선. DQN은 다음 milestone |
+| 비교 | Random policy, Low-stock policy, Demand-aware policy |
 | 결과 | reward curve, unmet demand 비교 |
 
 ### V1: DQN 학습과 평가
 
-목표는 같은 `ToyDdareungiEnv`에서 DQN을 학습하고, 저장된 모델을 불러와 Random 및 Low-stock baseline과 같은 지표로 비교하는 것이다.
+목표는 같은 `ToyDdareungiEnv`에서 DQN을 학습하고, 저장된 모델을 불러와 Random, Low-stock, Demand-aware baseline과 같은 지표로 비교하는 것이다.
 
 현재 CLI:
 
@@ -760,7 +773,27 @@ V1에서 아직 주장하지 않는 것:
 - Double DQN 또는 Dueling DQN의 우수성
 - 재배치 수량까지 학습했다는 주장
 
-### V2: Double DQN 확장
+### V2: PyTorch DQN 학습과 평가
+
+목표는 V1에서 검증한 학습 루프를 PyTorch `nn.Module` 기반 구현으로 옮겨, 일반적인 DQN 코드 구조와 과제 평가자가 기대하는 딥러닝 프레임워크 기반 학습을 보여주는 것이다.
+
+현재 CLI:
+
+```text
+ddareungi-train-torch-dqn
+ddareungi-evaluate --policy torch-dqn --model-path ...
+```
+
+이 단계에서도 환경, state, action, reward는 V1과 동일하게 유지한다. 따라서 성능 차이는 환경 변경 때문이 아니라 DQN 구현 방식과 학습 안정성에서 온다.
+
+V2에서 아직 주장하지 않는 것:
+
+- PyTorch DQN이 모든 seed에서 heuristic보다 항상 우수하다는 주장
+- 실제 따릉이 운영 최적화
+- Double DQN 또는 Dueling DQN의 우수성
+- 재배치 수량까지 학습했다는 주장
+
+### V3: Double DQN 확장
 
 목표는 DQN과 Double DQN을 비교하는 것이다.
 
@@ -776,7 +809,7 @@ V1에서 아직 주장하지 않는 것:
 - 학습 안정성
 - seed별 결과 차이
 
-### V3: Dueling DQN 확장
+### V4: Dueling DQN 확장
 
 목표는 DQN, Double DQN, Dueling DQN을 비교하는 것이다.
 

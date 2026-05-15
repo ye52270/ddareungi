@@ -10,12 +10,13 @@ from statistics import mean
 from typing import Literal
 
 from ddareungi_rl.agents import DQNPolicy
+from ddareungi_rl.agents.torch_dqn import TorchDQNPolicy
 from ddareungi_rl.envs import ToyDdareungiEnv
 from ddareungi_rl.policies import DemandAwarePolicy, LowStockPolicy, RandomPolicy
 from ddareungi_rl.policies.baselines import Policy
 
 
-PolicyName = Literal["random", "low-stock", "demand-aware", "dqn"]
+PolicyName = Literal["random", "low-stock", "demand-aware", "dqn", "torch-dqn"]
 RenderChoice = Literal["none", "ansi", "human"]
 
 
@@ -51,6 +52,10 @@ def make_policy(
         if model_path is None:
             raise ValueError("--model-path is required when --policy dqn")
         return DQNPolicy(model_path)
+    if name == "torch-dqn":
+        if model_path is None:
+            raise ValueError("--model-path is required when --policy torch-dqn")
+        return TorchDQNPolicy(model_path)
     raise ValueError(f"Unknown policy: {name}")
 
 
@@ -99,7 +104,7 @@ def run_episode(
         total_movement_cost += int(step_info["movement_cost"])
         step_info["policy_name"] = policy_name
         step_info["learning_stage"] = (
-            "DQN greedy 평가" if policy_name == "dqn" else "학습 전 기준 정책"
+            "DQN greedy 평가" if policy_name in ("dqn", "torch-dqn") else "학습 전 기준 정책"
         )
         step_info["episode_reward_so_far"] = episode_reward
         step_info["episode_served_demand_so_far"] = total_served
@@ -208,7 +213,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate Ddareungi policies on the toy MDP.")
     parser.add_argument(
         "--policy",
-        choices=["random", "low-stock", "demand-aware", "dqn"],
+        choices=["random", "low-stock", "demand-aware", "dqn", "torch-dqn"],
         default="random",
         help="Policy to evaluate.",
     )
@@ -230,7 +235,7 @@ def parse_args() -> argparse.Namespace:
         "--model-path",
         type=Path,
         default=None,
-        help="Saved DQN model path. Required when --policy dqn.",
+        help="Saved DQN model path. Required when --policy dqn or torch-dqn.",
     )
     return parser.parse_args()
 

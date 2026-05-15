@@ -12,11 +12,17 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+    "numpy>=1.26",
     "pygame-ce>=2.5",
     "pytest>=8",
+    "torch>=2.0",
 ]
 viz = [
     "pygame-ce>=2.5",
+]
+torch = [
+    "numpy>=1.26",
+    "torch>=2.0",
 ]
 
 [project.scripts]
@@ -26,6 +32,7 @@ ddareungi-evaluate = "ddareungi_rl.training.evaluate:main"
 ddareungi-replay = "ddareungi_rl.visualization.pixel_replay:main"
 ddareungi-replay-window = "ddareungi_rl.visualization.pygame_replay:main"
 ddareungi-train-dqn = "ddareungi_rl.training.train_dqn:main"
+ddareungi-train-torch-dqn = "ddareungi_rl.training.train_torch_dqn:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

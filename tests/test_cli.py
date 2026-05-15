@@ -8,9 +8,12 @@ from ddareungi_rl.cli import (
     run_choice,
     run_dqn_small_evaluation,
     run_dqn_small_training,
+    run_torch_dqn_evaluation,
+    run_torch_dqn_training,
     replay_log,
     summarize_results,
 )
+from ddareungi_rl.agents.torch_dqn import torch
 
 
 class CLITest(unittest.TestCase):
@@ -61,6 +64,33 @@ class CLITest(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].steps, 24)
 
+    @unittest.skipIf(torch is None, "PyTorch가 설치된 환경에서만 실행한다.")
+    def test_torch_dqn_menu_training_and_evaluation_helpers_run(self):
+        """PyTorch DQN 메뉴 helper가 학습 모델을 만들고 평가까지 실행하는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            model_path = tmp_path / "torch_dqn.pt"
+            metrics_path = tmp_path / "metrics.json"
+            train_log_path = tmp_path / "train_log.json"
+            eval_log_path = tmp_path / "eval_log.json"
+
+            run_torch_dqn_training(
+                episodes=1,
+                seed=123,
+                model_path=model_path,
+                metrics_path=metrics_path,
+                log_path=train_log_path,
+            )
+            results = run_torch_dqn_evaluation(
+                episodes=1,
+                seed=1000,
+                model_path=model_path,
+                log_path=eval_log_path,
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].steps, 24)
+
     def test_run_choice_exits_on_zero(self):
         """메뉴 선택 0이 반복 종료 신호를 반환하는지 검증한다."""
         self.assertFalse(run_choice("0"))
@@ -88,6 +118,14 @@ class CLITest(unittest.TestCase):
             side_effect=FileNotFoundError("missing model"),
         ):
             self.assertTrue(run_choice("3"))
+
+    def test_torch_dqn_menu_choice_returns_to_menu_when_model_is_missing(self):
+        """PyTorch DQN 모델이 없으면 메뉴가 예외로 죽지 않고 반복을 계속하는지 검증한다."""
+        with patch(
+            "ddareungi_rl.cli.run_torch_dqn_evaluation",
+            side_effect=FileNotFoundError("missing model"),
+        ):
+            self.assertTrue(run_choice("7"))
 
     def test_replay_log_runs_with_dummy_video(self):
         """저장된 log를 visualization helper로 replay할 수 있는지 검증한다."""
