@@ -6,6 +6,7 @@ import unittest
 from ddareungi_rl.agents import DQNConfig
 from ddareungi_rl.training.evaluate import aggregate_action_counts, evaluate, same_location_rate
 from ddareungi_rl.training.train_dqn import save_metrics, train_dqn
+from tests.profile_fixture import write_tiny_profile
 
 
 class TrainDQNTest(unittest.TestCase):
@@ -61,6 +62,39 @@ class TrainDQNTest(unittest.TestCase):
         self.assertEqual(results[0].steps, 24)
         self.assertEqual(sum(aggregate_action_counts(results).values()), 24)
         self.assertGreaterEqual(same_location_rate(results), 0.0)
+
+    def test_train_and_evaluate_with_profile_path(self):
+        """real-profile JSON을 주입한 순수 Python DQN 학습/평가 smoke test."""
+        config = DQNConfig(
+            hidden_size=8,
+            batch_size=4,
+            min_replay_size=4,
+            target_update_interval=2,
+            epsilon_decay_steps=10,
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            profile_path = write_tiny_profile(tmp_path / "profile.json")
+            model_path = tmp_path / "dqn.json"
+            agent, metrics, last_result = train_dqn(
+                episodes=1,
+                seed=123,
+                config=config,
+                profile_path=profile_path,
+            )
+            agent.save(model_path)
+            results = evaluate(
+                policy_name="dqn",
+                episodes=1,
+                seed=456,
+                render_mode="none",
+                model_path=model_path,
+                profile_path=profile_path,
+            )
+
+        self.assertEqual(len(metrics), 1)
+        self.assertEqual(last_result.steps, 24)
+        self.assertEqual(results[0].steps, 24)
 
 
 if __name__ == "__main__":

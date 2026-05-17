@@ -14,6 +14,7 @@ from ddareungi_rl.cli import (
     summarize_results,
 )
 from ddareungi_rl.agents.torch_dqn import torch
+from tests.profile_fixture import write_tiny_profile
 
 
 class CLITest(unittest.TestCase):
@@ -37,6 +38,19 @@ class CLITest(unittest.TestCase):
         self.assertIn("avg_unmet_demand", summary)
         self.assertIn("action_distribution", summary)
         self.assertIn("same_location_rate", summary)
+
+    def test_run_baseline_suite_accepts_profile_path(self):
+        """baseline suite가 real-profile JSON 환경에서도 실행되는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            profile_path = write_tiny_profile(Path(tmp_dir) / "profile.json")
+            results_by_policy = run_baseline_suite(
+                episodes=1,
+                seed=123,
+                profile_path=profile_path,
+            )
+
+        self.assertEqual(set(results_by_policy), {"random", "low-stock", "demand-aware"})
+        self.assertEqual(results_by_policy["random"][0].steps, 24)
 
     def test_dqn_menu_training_and_evaluation_helpers_run(self):
         """DQN 메뉴 helper가 학습 모델을 만들고 평가까지 실행하는지 검증한다."""

@@ -14,6 +14,7 @@ from ddareungi_rl.agents.torch_dqn import TorchDQNPolicy
 from ddareungi_rl.envs import ToyDdareungiEnv
 from ddareungi_rl.policies import DemandAwarePolicy, LowStockPolicy, RandomPolicy
 from ddareungi_rl.policies.baselines import Policy
+from ddareungi_rl.training.env_factory import make_env
 
 
 PolicyName = Literal["random", "low-stock", "demand-aware", "dqn", "torch-dqn"]
@@ -182,10 +183,11 @@ def evaluate(
     seed: int,
     render_mode: RenderChoice,
     model_path: Path | None = None,
+    profile_path: Path | None = None,
 ) -> list[EpisodeResult]:
     """하나의 policy를 여러 seed episode로 평가한다."""
     env_render_mode = "human" if render_mode == "human" else None
-    env = ToyDdareungiEnv(render_mode=env_render_mode, seed=seed)
+    env = make_env(profile_path=profile_path, render_mode=env_render_mode, seed=seed)
     policy = make_policy(policy_name, seed=seed, model_path=model_path)
 
     results = []
@@ -244,6 +246,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Saved DQN model path. Required when --policy dqn or torch-dqn.",
     )
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=None,
+        help="Optional real-data profile JSON for demand/return transition.",
+    )
     return parser.parse_args()
 
 
@@ -256,6 +264,7 @@ def main() -> None:
         seed=args.seed,
         render_mode=args.render_mode,
         model_path=args.model_path,
+        profile_path=args.profile,
     )
 
     if args.save_log is not None:
@@ -263,6 +272,7 @@ def main() -> None:
 
     print("Evaluation summary")
     print(f"policy={args.policy}")
+    print(f"profile={args.profile if args.profile is not None else 'toy-default'}")
     print(f"episodes={args.episodes}")
     print(f"avg_reward={mean(r.episode_reward for r in results):.2f}")
     print(f"avg_unmet_demand={mean(r.unmet_demand for r in results):.2f}")

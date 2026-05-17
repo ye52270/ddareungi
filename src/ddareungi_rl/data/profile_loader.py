@@ -40,6 +40,7 @@ def load_profile_config(
     config = base_config or ToyDdareungiConfig()
     return ToyDdareungiConfig(
         station_count=len(stations),
+        station_names=tuple(str(station["name"]) for station in stations),
         station_capacity=config.station_capacity,
         truck_capacity=config.truck_capacity,
         target_stock=config.target_stock,

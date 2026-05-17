@@ -17,6 +17,7 @@ from ddareungi_rl.training.evaluate import (
     save_episode_log,
     service_rate,
 )
+from ddareungi_rl.training.env_factory import make_env
 
 
 @dataclass
@@ -37,9 +38,10 @@ def train_torch_dqn(
     seed: int,
     config: TorchDQNConfig,
     device: str | None = None,
+    profile_path: Path | None = None,
 ) -> tuple[TorchDQNAgent, list[TorchTrainingEpisodeMetric], EpisodeResult]:
     """ToyDdareungiEnv에서 PyTorch DQN을 학습하고 metrics와 마지막 episode log를 반환한다."""
-    env = ToyDdareungiEnv(seed=seed)
+    env = make_env(profile_path=profile_path, seed=seed)
     agent = TorchDQNAgent(
         observation_size=env.observation_size,
         action_size=env.action_space_n,
@@ -190,6 +192,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epsilon-end", type=float, default=0.05)
     parser.add_argument("--epsilon-decay-steps", type=int, default=2000)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=None,
+        help="Optional real-data profile JSON for demand/return transition.",
+    )
     parser.add_argument("--model-out", type=Path, default=Path("outputs/models/torch_dqn_v1.pt"))
     parser.add_argument(
         "--metrics-out",
@@ -209,6 +217,7 @@ def main() -> None:
         seed=args.seed,
         config=config,
         device=args.device,
+        profile_path=args.profile,
     )
     agent.save(args.model_out)
     save_torch_metrics(metrics, args.metrics_out)
@@ -218,6 +227,7 @@ def main() -> None:
     last_metric = metrics[-1]
     print("PyTorch DQN training summary")
     print(f"episodes={args.episodes}")
+    print(f"profile={args.profile if args.profile is not None else 'toy-default'}")
     print(f"model_out={args.model_out}")
     print(f"metrics_out={args.metrics_out}")
     print(f"training_last_reward={last_metric.episode_reward:.2f}")

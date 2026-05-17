@@ -204,6 +204,26 @@ ddareungi-inspect-rental-csv <대여이력 CSV> --max-rows 1000
 ddareungi-build-station-profile <대여이력 CSV> <대여소 마스터 CSV>
 ```
 
+생성된 profile을 실제 학습 환경에 넣어 평가/학습하려면 다음처럼 실행한다.
+
+```bash
+ddareungi-evaluate \
+  --policy low-stock \
+  --profile outputs/data/magok_3station_profile.json
+
+ddareungi-train-torch-dqn \
+  --profile outputs/data/magok_3station_profile.json \
+  --model-out outputs/models/torch_dqn_magok_profile.pt \
+  --metrics-out outputs/metrics/torch_dqn_magok_profile_metrics.json \
+  --save-log outputs/logs/torch_dqn_magok_profile_train_episode.json
+
+ddareungi-evaluate \
+  --policy torch-dqn \
+  --profile outputs/data/magok_3station_profile.json \
+  --model-path outputs/models/torch_dqn_magok_profile.pt \
+  --save-log outputs/logs/torch_dqn_magok_profile_eval_episode.json
+```
+
 자세한 EDA 계획과 산출물 정의는 [docs/03_real_data_eda.md](docs/03_real_data_eda.md)에 정리되어 있다.
 
 ## Roadmap

@@ -54,12 +54,18 @@ def default_return_pattern() -> dict[range, tuple[tuple[int, int], ...]]:
     }
 
 
+def default_station_names() -> tuple[str, ...]:
+    """기본 toy 대여소 이름 tuple을 반환한다."""
+    return tuple(STATION_NAMES)
+
+
 @dataclass(frozen=True)
 class ToyDdareungiConfig:
     """Toy 따릉이 환경에서 조정 가능한 상수를 저장한다."""
 
     # 대여소/트럭의 물리적인 크기를 정한다.
     station_count: int = 3
+    station_names: tuple[str, ...] = field(default_factory=default_station_names)
     station_capacity: int = 10
     truck_capacity: int = 5
 
@@ -164,7 +170,7 @@ class ToyDdareungiEnv(gym.Env):
 
         # reset 직후에도 GUI/로그가 현재 상태를 바로 설명할 수 있게 info를 채운다.
         self.last_info = {
-            "station_names": STATION_NAMES.copy(),
+            "station_names": list(self.config.station_names),
             "station_bikes": self.station_bikes.copy(),
             "truck_location": self.truck_location,
             "truck_bikes": self.truck_bikes,
@@ -232,7 +238,7 @@ class ToyDdareungiEnv(gym.Env):
 
         # info는 학습에는 직접 쓰지 않고, replay/평가/시각화에서 transition을 설명하기 위해 남긴다.
         info = {
-            "station_names": STATION_NAMES.copy(),
+            "station_names": list(self.config.station_names),
             "time_step": self.time_step,
             "previous_truck_location": previous_location,
             "truck_previous_location": previous_location,
@@ -391,7 +397,11 @@ class ToyDdareungiEnv(gym.Env):
         """현재 상태와 마지막 transition 정보를 ANSI 스타일 frame으로 포맷한다."""
         cells = []
         for station_id, bikes in enumerate(self.station_bikes):
-            label = STATION_NAMES[station_id] if station_id < len(STATION_NAMES) else f"S{station_id}"
+            label = (
+                self.config.station_names[station_id]
+                if station_id < len(self.config.station_names)
+                else f"S{station_id}"
+            )
             truck_marker = " T" if self.truck_location == station_id else "  "
             cells.append(f"{label}{truck_marker} bikes={bikes:02d}")
 

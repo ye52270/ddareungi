@@ -17,6 +17,7 @@ from ddareungi_rl.training.evaluate import (
     save_episode_log,
     service_rate,
 )
+from ddareungi_rl.training.env_factory import make_env
 
 
 @dataclass
@@ -36,9 +37,10 @@ def train_dqn(
     episodes: int,
     seed: int,
     config: DQNConfig,
+    profile_path: Path | None = None,
 ) -> tuple[DQNAgent, list[TrainingEpisodeMetric], EpisodeResult]:
     """ToyDdareungiEnv에서 DQN을 학습하고 metrics와 마지막 episode log를 반환한다."""
-    env = ToyDdareungiEnv(seed=seed)
+    env = make_env(profile_path=profile_path, seed=seed)
     agent = DQNAgent(
         observation_size=env.observation_size,
         action_size=env.action_space_n,
@@ -189,6 +191,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epsilon-start", type=float, default=1.0)
     parser.add_argument("--epsilon-end", type=float, default=0.05)
     parser.add_argument("--epsilon-decay-steps", type=int, default=2000)
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=None,
+        help="Optional real-data profile JSON for demand/return transition.",
+    )
     parser.add_argument("--model-out", type=Path, default=Path("outputs/models/dqn_v1.json"))
     parser.add_argument(
         "--metrics-out",
@@ -203,7 +211,12 @@ def main() -> None:
     """DQN 학습을 실행하고 model/metrics/log를 저장한다."""
     args = parse_args()
     config = build_config(args)
-    agent, metrics, last_result = train_dqn(args.episodes, args.seed, config)
+    agent, metrics, last_result = train_dqn(
+        args.episodes,
+        args.seed,
+        config,
+        profile_path=args.profile,
+    )
     agent.save(args.model_out)
     save_metrics(metrics, args.metrics_out)
     if args.save_log is not None:
@@ -212,6 +225,7 @@ def main() -> None:
     last_metric = metrics[-1]
     print("DQN training summary")
     print(f"episodes={args.episodes}")
+    print(f"profile={args.profile if args.profile is not None else 'toy-default'}")
     print(f"model_out={args.model_out}")
     print(f"metrics_out={args.metrics_out}")
     print(f"training_last_reward={last_metric.episode_reward:.2f}")

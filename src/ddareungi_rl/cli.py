@@ -35,6 +35,11 @@ DEFAULT_TORCH_MODEL_PATH = Path("outputs/models/torch_dqn_small.pt")
 DEFAULT_TORCH_METRICS_PATH = Path("outputs/metrics/torch_dqn_small_metrics.json")
 DEFAULT_TORCH_TRAIN_LOG_PATH = Path("outputs/logs/torch_dqn_small_train_episode.json")
 DEFAULT_TORCH_EVAL_LOG_PATH = Path("outputs/logs/torch_dqn_small_eval_episode.json")
+DEFAULT_REAL_PROFILE_PATH = Path("outputs/data/magok_3station_profile.json")
+DEFAULT_REAL_TORCH_MODEL_PATH = Path("outputs/models/torch_dqn_magok_profile.pt")
+DEFAULT_REAL_TORCH_METRICS_PATH = Path("outputs/metrics/torch_dqn_magok_profile_metrics.json")
+DEFAULT_REAL_TORCH_TRAIN_LOG_PATH = Path("outputs/logs/torch_dqn_magok_profile_train_episode.json")
+DEFAULT_REAL_TORCH_EVAL_LOG_PATH = Path("outputs/logs/torch_dqn_magok_profile_eval_episode.json")
 
 
 def summarize_results(policy_name: str, results: list[EpisodeResult]) -> str:
@@ -58,12 +63,31 @@ def run_baseline_suite(
     episodes: int = 5,
     seed: int = 42,
     save_low_stock_log: Path | None = None,
+    profile_path: Path | None = None,
 ) -> dict[str, list[EpisodeResult]]:
     """Random, Low-stock, Demand-aware baseline을 같은 seed 묶음에서 평가한다."""
     results = {
-        "random": evaluate("random", episodes=episodes, seed=seed, render_mode="none"),
-        "low-stock": evaluate("low-stock", episodes=episodes, seed=seed, render_mode="none"),
-        "demand-aware": evaluate("demand-aware", episodes=episodes, seed=seed, render_mode="none"),
+        "random": evaluate(
+            "random",
+            episodes=episodes,
+            seed=seed,
+            render_mode="none",
+            profile_path=profile_path,
+        ),
+        "low-stock": evaluate(
+            "low-stock",
+            episodes=episodes,
+            seed=seed,
+            render_mode="none",
+            profile_path=profile_path,
+        ),
+        "demand-aware": evaluate(
+            "demand-aware",
+            episodes=episodes,
+            seed=seed,
+            render_mode="none",
+            profile_path=profile_path,
+        ),
     }
     if save_low_stock_log is not None:
         save_episode_log(results["low-stock"][0], save_low_stock_log)
@@ -76,10 +100,16 @@ def run_dqn_small_training(
     model_path: Path = DEFAULT_MODEL_PATH,
     metrics_path: Path = DEFAULT_METRICS_PATH,
     log_path: Path = DEFAULT_TRAIN_LOG_PATH,
+    profile_path: Path | None = None,
 ) -> Path:
     """작은 DQN smoke 학습을 실행하고 모델/metrics/log를 저장한다."""
     config = DQNConfig()
-    agent, metrics, last_result = train_dqn(episodes=episodes, seed=seed, config=config)
+    agent, metrics, last_result = train_dqn(
+        episodes=episodes,
+        seed=seed,
+        config=config,
+        profile_path=profile_path,
+    )
     agent.save(model_path)
     save_metrics(metrics, metrics_path)
     save_episode_log(last_result, log_path)
@@ -99,6 +129,7 @@ def run_dqn_small_evaluation(
     seed: int = 1000,
     model_path: Path = DEFAULT_MODEL_PATH,
     log_path: Path = DEFAULT_EVAL_LOG_PATH,
+    profile_path: Path | None = None,
 ) -> list[EpisodeResult]:
     """저장된 DQN(Small) 모델을 held-out seed 묶음에서 greedy 평가한다."""
     if not model_path.exists():
@@ -111,6 +142,7 @@ def run_dqn_small_evaluation(
         seed=seed,
         render_mode="none",
         model_path=model_path,
+        profile_path=profile_path,
     )
     save_episode_log(results[0], log_path)
     return results
@@ -122,10 +154,16 @@ def run_torch_dqn_training(
     model_path: Path = DEFAULT_TORCH_MODEL_PATH,
     metrics_path: Path = DEFAULT_TORCH_METRICS_PATH,
     log_path: Path = DEFAULT_TORCH_TRAIN_LOG_PATH,
+    profile_path: Path | None = None,
 ) -> Path:
     """PyTorch DQN smoke 학습을 실행하고 모델/metrics/log를 저장한다."""
     config = TorchDQNConfig()
-    agent, metrics, last_result = train_torch_dqn(episodes=episodes, seed=seed, config=config)
+    agent, metrics, last_result = train_torch_dqn(
+        episodes=episodes,
+        seed=seed,
+        config=config,
+        profile_path=profile_path,
+    )
     agent.save(model_path)
     save_torch_metrics(metrics, metrics_path)
     save_episode_log(last_result, log_path)
@@ -145,6 +183,7 @@ def run_torch_dqn_evaluation(
     seed: int = 1000,
     model_path: Path = DEFAULT_TORCH_MODEL_PATH,
     log_path: Path = DEFAULT_TORCH_EVAL_LOG_PATH,
+    profile_path: Path | None = None,
 ) -> list[EpisodeResult]:
     """저장된 PyTorch DQN 모델을 held-out seed 묶음에서 greedy 평가한다."""
     if not model_path.exists():
@@ -157,6 +196,7 @@ def run_torch_dqn_evaluation(
         seed=seed,
         render_mode="none",
         model_path=model_path,
+        profile_path=profile_path,
     )
     save_episode_log(results[0], log_path)
     return results
@@ -186,6 +226,10 @@ def print_menu() -> None:
     print("6. PyTorch DQN 학습")
     print("7. PyTorch DQN 평가")
     print("8. PyTorch DQN 평가 + visualization")
+    print("9. Real-profile Baseline 평가")
+    print("10. Real-profile PyTorch DQN 학습")
+    print("11. Real-profile PyTorch DQN 평가")
+    print("12. Real-profile PyTorch DQN 평가 + visualization")
     print("0. 종료")
 
 
@@ -262,6 +306,61 @@ def run_choice(choice: str) -> bool:
         print("Visualization 조작: 창을 한 번 클릭한 뒤 Space 일시정지, Right 다음, R 다시보기, Q/Esc 창 닫기")
         print("참고: 메뉴 visualization은 창을 닫으면 프로그램도 종료됩니다.")
         replay_log(DEFAULT_TORCH_EVAL_LOG_PATH)
+        print("Visualization 창을 닫았습니다. 프로그램을 종료합니다.")
+        return False
+    if choice == "9":
+        print(f"[Real-profile Baseline 평가] profile={DEFAULT_REAL_PROFILE_PATH}")
+        if not DEFAULT_REAL_PROFILE_PATH.exists():
+            print(f"{DEFAULT_REAL_PROFILE_PATH}가 없습니다. 먼저 ddareungi-build-station-profile을 실행하세요.")
+            return True
+        results_by_policy = run_baseline_suite(profile_path=DEFAULT_REAL_PROFILE_PATH)
+        for policy_name, results in results_by_policy.items():
+            print("-" * 40)
+            print(summarize_results(policy_name, results))
+        return True
+    if choice == "10":
+        print(f"[Real-profile PyTorch DQN 학습] profile={DEFAULT_REAL_PROFILE_PATH}")
+        if not DEFAULT_REAL_PROFILE_PATH.exists():
+            print(f"{DEFAULT_REAL_PROFILE_PATH}가 없습니다. 먼저 ddareungi-build-station-profile을 실행하세요.")
+            return True
+        try:
+            run_torch_dqn_training(
+                model_path=DEFAULT_REAL_TORCH_MODEL_PATH,
+                metrics_path=DEFAULT_REAL_TORCH_METRICS_PATH,
+                log_path=DEFAULT_REAL_TORCH_TRAIN_LOG_PATH,
+                profile_path=DEFAULT_REAL_PROFILE_PATH,
+            )
+        except ModuleNotFoundError as exc:
+            print(exc)
+        return True
+    if choice == "11":
+        print(f"[Real-profile PyTorch DQN 평가] profile={DEFAULT_REAL_PROFILE_PATH}")
+        try:
+            results = run_torch_dqn_evaluation(
+                model_path=DEFAULT_REAL_TORCH_MODEL_PATH,
+                log_path=DEFAULT_REAL_TORCH_EVAL_LOG_PATH,
+                profile_path=DEFAULT_REAL_PROFILE_PATH,
+            )
+        except (FileNotFoundError, ModuleNotFoundError) as exc:
+            print(exc)
+            return True
+        print(summarize_results("torch-dqn-real-profile", results))
+        return True
+    if choice == "12":
+        print(f"[Real-profile PyTorch DQN 평가 + visualization] profile={DEFAULT_REAL_PROFILE_PATH}")
+        try:
+            results = run_torch_dqn_evaluation(
+                model_path=DEFAULT_REAL_TORCH_MODEL_PATH,
+                log_path=DEFAULT_REAL_TORCH_EVAL_LOG_PATH,
+                profile_path=DEFAULT_REAL_PROFILE_PATH,
+            )
+        except (FileNotFoundError, ModuleNotFoundError) as exc:
+            print(exc)
+            return True
+        print(summarize_results("torch-dqn-real-profile", results))
+        print("Visualization 조작: 창을 한 번 클릭한 뒤 Space 일시정지, Right 다음, R 다시보기, Q/Esc 창 닫기")
+        print("참고: 메뉴 visualization은 창을 닫으면 프로그램도 종료됩니다.")
+        replay_log(DEFAULT_REAL_TORCH_EVAL_LOG_PATH)
         print("Visualization 창을 닫았습니다. 프로그램을 종료합니다.")
         return False
     if choice == "0":
