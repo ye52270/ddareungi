@@ -4,15 +4,50 @@
 
 This repository is a final project for a DQN-based Ddareungi bike repositioning simulator.
 
+The final target is not merely a runnable toy script. The project should become an executable mini research platform for a reinforcement learning class project, centered on Seoul Ddareungi bike repositioning.
+
+The final result should help a professor, teammate, or reviewer understand:
+
+- Why bike repositioning can be modeled as a sequential decision-making problem.
+- How the MDP defines State, Action, Reward, Environment dynamics, and horizon.
+- How Random, Low-stock, and Demand-aware baselines compare against learned agents.
+- How DQN-family algorithms and selected policy-gradient algorithms can be trained and evaluated on the same environment.
+- How visualization explains truck movement, station inventory, unmet demand, and reward flow.
+- How large real Ddareungi data can later be reduced into demand/return profiles for controlled experiments.
+
+In one sentence: build an understandable, executable, and extensible RL mini research platform for Ddareungi repositioning.
+
 The project should first prove that a small reinforcement learning environment works before expanding toward real Seoul bike-sharing data.
 
 Current design direction:
 
 - V0: toy environment with 3 virtual stations and 1 repositioning truck.
+- Environment interface: Gymnasium-compatible `ToyDdareungiEnv`.
 - Agent action: choose the next station to visit.
 - Loading and unloading: handled automatically by a rule-based environment heuristic.
-- Main comparison: DQN vs Random and heuristic baselines.
-- Later expansion: Double DQN, Dueling DQN, and selected real Ddareungi data.
+- Main comparison: baselines vs Pure Python DQN vs PyTorch DQN.
+- Later expansion: Double DQN, Dueling DQN, Policy Gradient, PPO, and selected real Ddareungi data.
+
+## Product Direction
+
+This project is not an algorithm zoo. Every feature should serve the Ddareungi repositioning MDP and the class-project narrative.
+
+Prioritize:
+
+1. Clear MDP definition.
+2. Readable educational code.
+3. Reproducible baseline and RL algorithm comparison.
+4. Stable Gymnasium-compatible environment behavior.
+5. Separate training, evaluation, logging, and visualization.
+6. Interpretable replay visualization.
+7. Real-data extensibility through small demand/return profiles, not immediate full-scale city simulation.
+
+When adding a new algorithm or data feature, ask:
+
+- Does it clarify the Ddareungi RL problem?
+- Can it be compared fairly against existing baselines?
+- Can a student understand where learning happens?
+- Does it keep State, Action, Reward, and evaluation metrics explicit?
 
 ## Collaboration Style
 
@@ -34,13 +69,15 @@ The Design Agent and Review Agent should avoid overlapping ownership. A good def
 
 ## Project Priorities
 
-1. Keep V0 small and executable first.
-2. Prefer a working `ToyDdareungiEnv` over premature V1 complexity.
-3. Keep state, action, reward, and episode termination explicit.
-4. Compare DQN against Random and at least one heuristic baseline.
-5. Track evaluation metrics such as episode reward, unmet demand, movement cost, and baseline improvement.
+1. Keep the Gymnasium-compatible environment stable and easy to inspect.
+2. Keep state, action, reward, and episode termination explicit.
+3. Preserve educational walkthroughs that show `reset()`, `step(action)`, reward, and `info`.
+4. Compare learned policies against Random, Low-stock, and Demand-aware baselines.
+5. Track evaluation metrics such as episode reward, unmet demand, service rate, movement cost, action distribution, and same-location rate.
 6. Keep visualization separate from training logic by replaying saved episode logs.
 7. Use pixel/tile-map visualization inspired by FrozenLake for presentation clarity.
+8. Expand algorithms in an order that preserves interpretability: PyTorch DQN, Double DQN, Dueling DQN, then Policy Gradient/PPO.
+9. Treat large real Ddareungi data as a later source for demand/return profiles, not as the first training environment.
 
 ## Iterative Agent Workflow
 
@@ -94,10 +131,13 @@ Rules:
 For reinforcement learning code:
 
 - Make observation and action spaces explicit.
+- Prefer Gymnasium-compatible environment APIs for new environments.
 - Normalize observations when helpful, but keep raw values available in `info` or logs.
 - Keep reward components visible in `info` so results can be explained.
 - Track at least episode reward and unmet demand for every evaluation run.
 - Compare learned policies against Random and heuristic baselines before claiming improvement.
+- Separate value-based agents such as DQN/Double DQN/Dueling DQN from policy-based agents such as Policy Gradient/PPO.
+- Do not claim an algorithm is better based on training reward; use held-out greedy evaluation with the same seeds and metrics.
 
 For visualization code:
 
@@ -149,21 +189,32 @@ Prefer a simple, testable structure before adding advanced algorithms.
 Suggested eventual structure:
 
 ```text
-src/
+src/ddareungi_rl/
   envs/
     toy_ddareungi_env.py
   agents/
     dqn.py
+    torch_dqn.py
+    value_based/
+      double_dqn.py
+      dueling_dqn.py
+    policy_based/
+      policy_gradient.py
+      ppo.py
   policies/
-    random_policy.py
-    heuristic_policy.py
+    baselines.py
   training/
     train_dqn.py
+    train_torch_dqn.py
     evaluate.py
+    compare_algorithms.py
+  tutorials/
+    env_step_walkthrough.py
+    dqn_update_walkthrough.py
+  data/
+    demand_profile.py
   visualization/
-    pixel_replay.py
-  utils/
-    logging.py
+    pygame_replay.py
 ```
 
 Keep the environment independent from the learning algorithm. The environment should expose a clear Gymnasium-style API where practical:
@@ -191,6 +242,8 @@ truck_bikes
 station_bikes
 ```
 
+For educational scripts, prefer small executable walkthroughs over notebooks-only code. A walkthrough should be truthful and runnable, but it may omit CLI, saving, plotting, or visualization details so the learning flow is easy to read.
+
 ## Scope Control
 
 Do not move to real Ddareungi data until the V0 loop works end-to-end:
@@ -210,6 +263,18 @@ Treat the following as optional extensions unless the user asks for them:
 - Action masking.
 - Distance-based travel time.
 - Full real-data pipeline.
+
+Recommended expansion order:
+
+1. Gymnasium environment stability and tests.
+2. Educational walkthroughs.
+3. PyTorch DQN multi-seed evaluation.
+4. Double DQN.
+5. Dueling DQN.
+6. Small real-data-derived demand/return profiles for a few stations.
+7. Policy Gradient.
+8. PPO.
+9. Larger station sets or real distance/travel-time matrices.
 
 ## Documentation Guidance
 
