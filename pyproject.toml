@@ -8,11 +8,13 @@ version = "0.1.0"
 description = "DQN-based Ddareungi bike repositioning simulator"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "gymnasium>=0.29",
+    "numpy>=1.26",
+]
 
 [project.optional-dependencies]
 dev = [
-    "numpy>=1.26",
     "pygame-ce>=2.5",
     "pytest>=8",
     "torch>=2.0",
@@ -33,6 +35,7 @@ ddareungi-replay = "ddareungi_rl.visualization.pixel_replay:main"
 ddareungi-replay-window = "ddareungi_rl.visualization.pygame_replay:main"
 ddareungi-train-dqn = "ddareungi_rl.training.train_dqn:main"
 ddareungi-train-torch-dqn = "ddareungi_rl.training.train_torch_dqn:main"
+ddareungi-walkthrough-env = "ddareungi_rl.tutorials.env_step_walkthrough:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

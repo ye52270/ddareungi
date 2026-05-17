@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 import random
 
+import numpy as np
+
 try:
     import torch
     from torch import nn
@@ -172,7 +174,7 @@ class TorchDQNAgent:
 
         self.online_network.eval()
         with torch.no_grad():
-            state_tensor = torch.tensor([state], dtype=torch.float32, device=self.device)
+            state_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             q_values = self.online_network(state_tensor)
             return int(torch.argmax(q_values, dim=1).item())
 
@@ -192,12 +194,14 @@ class TorchDQNAgent:
         batch_size = min(self.config.batch_size, len(self.replay_buffer))
         batch = self.replay_buffer.sample(batch_size)
 
-        states = torch.tensor([t.state for t in batch], dtype=torch.float32, device=self.device)
+        states = torch.as_tensor(
+            np.asarray([t.state for t in batch], dtype=np.float32),
+            device=self.device,
+        )
         actions = torch.tensor([t.action for t in batch], dtype=torch.long, device=self.device)
         rewards = torch.tensor([t.reward for t in batch], dtype=torch.float32, device=self.device)
-        next_states = torch.tensor(
-            [t.next_state for t in batch],
-            dtype=torch.float32,
+        next_states = torch.as_tensor(
+            np.asarray([t.next_state for t in batch], dtype=np.float32),
             device=self.device,
         )
         dones = torch.tensor([t.done for t in batch], dtype=torch.bool, device=self.device)

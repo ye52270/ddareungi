@@ -11,7 +11,12 @@ from statistics import mean
 from ddareungi_rl.agents import DQNAgent, DQNConfig
 from ddareungi_rl.agents.dqn import Transition
 from ddareungi_rl.envs import ToyDdareungiEnv
-from ddareungi_rl.training.evaluate import EpisodeResult, run_episode, save_episode_log, service_rate
+from ddareungi_rl.training.evaluate import (
+    EpisodeResult,
+    jsonable_observation,
+    save_episode_log,
+    service_rate,
+)
 
 
 @dataclass
@@ -46,7 +51,8 @@ def train_dqn(
 
     for episode in range(episodes):
         episode_seed = seed + episode
-        state, _ = env.reset(seed=episode_seed)
+        initial_state, _ = env.reset(seed=episode_seed)
+        state = jsonable_observation(initial_state)
         done = False
         episode_reward = 0.0
         total_served = 0
@@ -74,7 +80,8 @@ def train_dqn(
 
             # env.step()은 Gymnasium 스타일 transition tuple을 반환한다.
             # 현재 환경에서는 terminated는 항상 False이고, 24 step이 끝나면 truncated가 True가 된다.
-            next_state, reward, terminated, truncated, info = env.step(action)
+            next_observation, reward, terminated, truncated, info = env.step(action)
+            next_state = jsonable_observation(next_observation)
             done = terminated or truncated
             agent.remember(Transition(state, action, reward, next_state, done))
             loss = agent.update()

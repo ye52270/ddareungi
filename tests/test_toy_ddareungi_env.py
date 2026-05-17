@@ -1,5 +1,7 @@
 import unittest
 
+import gymnasium as gym
+
 from ddareungi_rl.envs import ToyDdareungiEnv
 from ddareungi_rl.policies import DemandAwarePolicy, LowStockPolicy
 
@@ -13,7 +15,10 @@ class ToyDdareungiEnvTest(unittest.TestCase):
         policy = LowStockPolicy()
         state, info = env.reset(seed=123)
 
+        self.assertIsInstance(env, gym.Env)
         self.assertEqual(len(state), env.observation_size)
+        self.assertTrue(env.observation_space.contains(state))
+        self.assertEqual(env.action_space.n, env.action_space_n)
         self.assertEqual(info["time_step"], 0)
 
         done = False
@@ -28,6 +33,7 @@ class ToyDdareungiEnvTest(unittest.TestCase):
 
         self.assertEqual(steps, env.config.episode_steps)
         self.assertEqual(len(state), env.observation_size)
+        self.assertTrue(env.observation_space.contains(state))
         self.assertIsInstance(total_reward, float)
 
     def test_ansi_render_returns_text_frame(self):

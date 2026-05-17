@@ -20,6 +20,13 @@ PolicyName = Literal["random", "low-stock", "demand-aware", "dqn", "torch-dqn"]
 RenderChoice = Literal["none", "ansi", "human"]
 
 
+def jsonable_observation(observation: object) -> list[float]:
+    """numpy/list observation을 JSON replay log에 저장 가능한 list로 변환한다."""
+    if hasattr(observation, "tolist"):
+        return [float(value) for value in observation.tolist()]
+    return [float(value) for value in observation]  # type: ignore[arg-type]
+
+
 @dataclass
 class EpisodeResult:
     """평가된 episode 하나의 요약 지표와 replay log를 보관한다."""
@@ -80,7 +87,7 @@ def run_episode(
     log: list[dict[str, object]] = [
         {
             "event": "reset",
-            "state": state,
+            "state": jsonable_observation(state),
             "info": info,
         }
     ]
@@ -118,10 +125,10 @@ def run_episode(
         log.append(
             {
                 "event": "step",
-                "state": state,
+                "state": jsonable_observation(state),
                 "action": action,
                 "reward": reward,
-                "next_state": next_state,
+                "next_state": jsonable_observation(next_state),
                 "terminated": terminated,
                 "truncated": truncated,
                 "info": step_info,

@@ -111,12 +111,12 @@ demand = [
 
 | 항목 | 현재 구현 |
 |---|---|
-| 환경 | `ToyDdareungiEnv` |
-| API | Gymnasium 스타일 `reset()` / `step()` |
+| 환경 | `ToyDdareungiEnv(gymnasium.Env)` |
+| API | Gymnasium 표준 `reset()` / `step()` |
 | 관측값 | 정규화된 station stock, truck location, truck load, time step |
 | 원본 값 | `info`와 episode log에 station/truck/reward component 저장 |
 | 대여소 이름 | `마포구청역`, `여의도역`, `서울숲입구` |
-| baseline | Random, Low-stock |
+| baseline | Random, Low-stock, Demand-aware |
 | render mode | `none`, `ansi`, `human` |
 | episode log | JSON 저장 가능 |
 | 시각화 | terminal tile replay, pygame window replay |
@@ -131,7 +131,13 @@ PYTHONPATH=src python3 -m ddareungi_rl.training.evaluate --policy low-stock --ep
 
 현재 `ansi`는 평가 코드가 환경의 text frame을 받아 출력하고, `human`은 `ToyDdareungiEnv.step()`이 직접 frame을 출력한다. 이후 픽셀/타일 기반 시각화는 학습 코드와 직접 연결하지 않고, 저장된 episode log를 replay하는 방식으로 확장한다.
 
-현재 구현은 V0 baseline을 기준선으로 고정하고, 같은 MDP 위에서 V1 DQN 학습과 greedy 평가를 실행할 수 있는 단계다. 짧은 학습 결과는 기능 확인용 smoke check로 보고, 성능 주장은 held-out seed 묶음에서 baseline과 비교한 뒤에만 한다.
+현재 구현은 V0 baseline을 기준선으로 고정하고, 같은 MDP 위에서 pure Python DQN과 PyTorch DQN 학습/greedy 평가를 실행할 수 있는 단계다. 짧은 학습 결과는 기능 확인용 smoke check로 보고, 성능 주장은 held-out seed 묶음에서 baseline과 비교한 뒤에만 한다.
+
+수업용으로 한 step transition만 먼저 확인하려면 다음 walkthrough를 실행한다.
+
+```bash
+ddareungi-walkthrough-env
+```
 
 ### V0 반납 패턴
 
@@ -604,7 +610,7 @@ truncated
 info
 ```
 
-`info`에는 분석과 시각화에 필요한 값을 함께 저장한다.
+`info`에는 분석과 시각화에 필요한 값을 함께 저장한다. agent가 학습에 직접 사용하는 값은 `observation_space`에 맞는 정규화된 observation vector다.
 
 ```text
 time_step

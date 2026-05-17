@@ -11,7 +11,12 @@ from statistics import mean
 from ddareungi_rl.agents.dqn import Transition
 from ddareungi_rl.agents.torch_dqn import TorchDQNAgent, TorchDQNConfig
 from ddareungi_rl.envs import ToyDdareungiEnv
-from ddareungi_rl.training.evaluate import EpisodeResult, save_episode_log, service_rate
+from ddareungi_rl.training.evaluate import (
+    EpisodeResult,
+    jsonable_observation,
+    save_episode_log,
+    service_rate,
+)
 
 
 @dataclass
@@ -48,7 +53,8 @@ def train_torch_dqn(
 
     for episode in range(episodes):
         episode_seed = seed + episode
-        state, _ = env.reset(seed=episode_seed)
+        initial_state, _ = env.reset(seed=episode_seed)
+        state = jsonable_observation(initial_state)
         done = False
         episode_reward = 0.0
         total_served = 0
@@ -74,7 +80,8 @@ def train_torch_dqn(
             if action == previous_location:
                 same_location_actions += 1
 
-            next_state, reward, terminated, truncated, info = env.step(action)
+            next_observation, reward, terminated, truncated, info = env.step(action)
+            next_state = jsonable_observation(next_observation)
             done = terminated or truncated
             agent.remember(Transition(state, action, reward, next_state, done))
             loss = agent.update()

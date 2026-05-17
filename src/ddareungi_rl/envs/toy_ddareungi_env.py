@@ -14,6 +14,10 @@ from dataclasses import dataclass, field
 import random
 from typing import Literal
 
+import gymnasium as gym
+import numpy as np
+from gymnasium import spaces
+
 from ddareungi_rl.stations import STATION_NAMES
 
 
@@ -84,10 +88,10 @@ class ToyDdareungiConfig:
     )
 
 
-class ToyDdareungiEnv:
-    """V0 실험을 위한 작은 Gymnasium 스타일 환경이다."""
+class ToyDdareungiEnv(gym.Env):
+    """V0 실험을 위한 작은 Gymnasium 표준 환경이다."""
 
-    metadata = {"render_modes": [None, "ansi", "human"]}
+    metadata = {"render_modes": ["ansi", "human"]}
 
     def __init__(
         self,
@@ -99,12 +103,23 @@ class ToyDdareungiEnv:
         if render_mode not in (None, "ansi", "human"):
             raise ValueError("render_mode must be one of None, 'ansi', or 'human'")
 
+        super().__init__()
+
         # config가 없으면 기본 toy MDP 설정으로 시작한다.
         self.config = config or ToyDdareungiConfig()
         self.render_mode = render_mode
+        self.action_space = spaces.Discrete(self.config.station_count)
+        self.observation_space = spaces.Box(
+            low=0.0,
+            high=1.0,
+            shape=(self.config.station_count + 3,),
+            dtype=np.float32,
+        )
 
         # 환경 내부 난수만 따로 관리하면 같은 seed로 같은 episode를 재현할 수 있다.
         self.rng = random.Random(seed)
+        if seed is not None:
+            self.action_space.seed(seed)
 
         # 아래 값들이 observation의 원본 상태다. reset()에서 episode 초기값으로 다시 설정된다.
         self.station_bikes = [0] * self.config.station_count
@@ -125,14 +140,16 @@ class ToyDdareungiEnv:
         """정규화된 observation vector의 길이를 반환한다."""
         return self.config.station_count + 3
 
-    def current_observation(self) -> list[float]:
+    def current_observation(self) -> np.ndarray:
         """현재 환경 상태의 정규화된 observation vector를 반환한다."""
         return self._observation()
 
-    def reset(self, seed: int | None = None) -> tuple[list[float], dict[str, object]]:
+    def reset(self, seed: int | None = None) -> tuple[np.ndarray, dict[str, object]]:
         """새 episode를 시작하고 초기 observation과 info를 반환한다."""
+        super().reset(seed=seed)
         if seed is not None:
             self.rng.seed(seed)
+            self.action_space.seed(seed)
 
         # episode마다 대여소 초기 재고를 조금씩 바꿔서 agent가 한 상황에만 외우지 않게 한다.
         self.station_bikes = [
@@ -159,12 +176,13 @@ class ToyDdareungiEnv:
 
     def step(
         self, action: int
-    ) -> tuple[list[float], float, bool, bool, dict[str, object]]:
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, object]]:
         """대여소 방문 action 하나를 적용하고 다음 transition tuple을 반환한다.
 
         이 함수가 MDP의 transition이다. agent는 방문할 대여소만 고르고,
         환경은 이동, 자동 재배치, 수요/반납, reward 계산을 순서대로 처리한다.
         """
+        action = int(action)
         if not 0 <= action < self.config.station_count:
             raise ValueError(f"action must be between 0 and {self.config.station_count - 1}")
 
@@ -270,18 +288,21 @@ class ToyDdareungiEnv:
         """렌더링 자원을 해제한다. 현재 text 렌더링에서는 no-op이다."""
         return None
 
-    def _observation(self) -> list[float]:
+    def _observation(self) -> np.ndarray:
         """원본 환경 상태에서 정규화된 observation vector를 만든다."""
         cfg = self.config
 
         # DQN 같은 신경망이 다루기 쉽도록 재고/위치/적재량/시간을 0~1 범위로 맞춘다.
         normalized_stations = [bikes / cfg.station_capacity for bikes in self.station_bikes]
-        return [
-            *normalized_stations,
-            self.truck_location / max(1, cfg.station_count - 1),
-            self.truck_bikes / cfg.truck_capacity,
-            self.time_step / cfg.episode_steps,
-        ]
+        return np.array(
+            [
+                *normalized_stations,
+                self.truck_location / max(1, cfg.station_count - 1),
+                self.truck_bikes / cfg.truck_capacity,
+                self.time_step / cfg.episode_steps,
+            ],
+            dtype=np.float32,
+        )
 
     def _auto_rebalance(self, station_id: int) -> int:
         """방문한 대여소의 재고가 target stock에 가까워지도록 싣거나 내린다."""
