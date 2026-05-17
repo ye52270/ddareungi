@@ -6,6 +6,6 @@ __pycache__/
 .venv/
 venv/
 outputs/
-data/
+/data/
 .DS_Store
 *.egg-info/

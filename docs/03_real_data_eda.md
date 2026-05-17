@@ -86,6 +86,7 @@ data/
 - 일부 반납 대여소명 또는 ID에 `\N` 값이 있다. profile 생성 시 제외한다.
 - 마스터 3,418개 중 일부 station은 위도/경도가 `0.0`이다. 거리 계산이나 지도 기반 선정에서는 제외한다.
 - CSV는 `cp949` 인코딩으로 읽는 것이 안전하다.
+- 대여/반납 CSV는 실제로 발생한 거래 기록이다. 자전거가 없어 빌리지 못한 잠재 수요는 직접 기록되지 않을 수 있다.
 
 ## 1차 분석 결과
 
@@ -187,6 +188,13 @@ outputs/data/magok_eda_summary.md
 
 학습과 평가는 같은 profile 구조를 사용하되 seed와 episode를 분리한다. 가능하면 profile 생성 기간과 평가 기간도 분리해, 특정 날짜의 패턴을 외운 결과를 일반적인 성능처럼 보이지 않게 한다.
 
+예시 split:
+
+```text
+profile 추정: 2025-12-01 ~ 2025-12-21
+held-out 검증: 2025-12-22 ~ 2025-12-31
+```
+
 ## 다음 구현 순서
 
 1. `src/ddareungi_rl/data/inspect_rental_csv.py`
@@ -201,6 +209,16 @@ outputs/data/magok_eda_summary.md
    - Demand-aware
 5. PyTorch DQN 평가
 6. README와 결과 표 업데이트
+
+현재 구현된 CLI:
+
+```bash
+ddareungi-inspect-rental-csv <대여이력 CSV> --max-rows 1000
+
+ddareungi-build-station-profile <대여이력 CSV> <대여소 마스터 CSV> \
+  --start-date 2025-12-01 \
+  --end-date 2025-12-21
+```
 
 ## 안전한 표현
 

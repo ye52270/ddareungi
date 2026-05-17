@@ -36,6 +36,8 @@ ddareungi-replay-window = "ddareungi_rl.visualization.pygame_replay:main"
 ddareungi-train-dqn = "ddareungi_rl.training.train_dqn:main"
 ddareungi-train-torch-dqn = "ddareungi_rl.training.train_torch_dqn:main"
 ddareungi-walkthrough-env = "ddareungi_rl.tutorials.env_step_walkthrough:main"
+ddareungi-inspect-rental-csv = "ddareungi_rl.data.inspect_rental_csv:main"
+ddareungi-build-station-profile = "ddareungi_rl.data.build_station_hour_profile:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
