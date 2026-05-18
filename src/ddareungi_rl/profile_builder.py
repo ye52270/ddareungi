@@ -158,6 +158,8 @@ def build_daily_profile_from_csvs(
     station_ids: tuple[str, ...] = (),
     master_csv: Path | None = None,
     encoding: str = "cp949",
+    max_daily_count: int = 10,
+    normalize_counts: bool = True,
     show_progress: bool = True,
 ) -> dict[str, object]:
     """대여이력 CSV를 날짜/시간대별 실제 대여/반납 count profile로 변환한다."""
@@ -203,6 +205,18 @@ def build_daily_profile_from_csvs(
         )
 
     all_dates = sorted(set(demand_by_date) | set(return_by_date))
+    raw_max_count = _max_daily_count(demand_by_date, return_by_date)
+    normalization_scale = 1.0
+    if normalize_counts:
+        # 실제 공공데이터 count는 toy MDP의 station/truck capacity보다 훨씬 크다.
+        # 그래서 날짜/시간/대여소별 상대 패턴은 유지하되, 최대 count가
+        # max_daily_count를 넘지 않도록 같은 배율로 축소한다.
+        demand_by_date, return_by_date, normalization_scale = _normalize_daily_counts(
+            demand_by_date=demand_by_date,
+            return_by_date=return_by_date,
+            max_daily_count=max_daily_count,
+            raw_max_count=raw_max_count,
+        )
     master_lookup = _load_master_lookup(master_csv, encoding) if master_csv else {}
     payload: dict[str, object] = {
         "profile_kind": "daily",
@@ -229,6 +243,13 @@ def build_daily_profile_from_csvs(
             "hour_count": 24,
             "station_count": len(candidates),
             "observation_count": len(all_dates) * 24 * len(candidates),
+            "normalization": {
+                "enabled": normalize_counts,
+                "method": "global_max_scale",
+                "raw_max_count": raw_max_count,
+                "max_daily_count": max_daily_count,
+                "scale": normalization_scale,
+            },
             "candidate_counts": [
                 {
                     "id": candidate.station_id,
@@ -315,7 +336,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--station-count", type=int, default=3)
     parser.add_argument("--station-ids", default="")
     parser.add_argument("--encoding", default="cp949")
-    parser.add_argument("--max-sample-high", type=int, default=5)
+    parser.add_argument("--max-sample-high", type=int, default=10)
     parser.add_argument("--scale", type=float)
     parser.add_argument(
         "--profile-kind",
@@ -345,6 +366,8 @@ def main(argv: list[str] | None = None) -> None:
             station_ids=station_ids,
             master_csv=args.master_csv,
             encoding=args.encoding,
+            max_daily_count=args.max_sample_high,
+            normalize_counts=True,
             show_progress=True,
         )
     else:
@@ -482,6 +505,69 @@ def _add_daily_count(
     station_count = len(station_index)
     day_counts = counts_by_date.setdefault(date_key, _empty_day_counts(station_count))
     day_counts[event_time.hour][station_index[station_id]] += 1
+
+
+def _max_daily_count(
+    demand_by_date: dict[str, list[list[int]]],
+    return_by_date: dict[str, list[list[int]]],
+) -> int:
+    """날짜/시간/대여소별 대여와 반납 count 중 최댓값을 반환한다."""
+    values = [
+        value
+        for counts_by_date in (demand_by_date, return_by_date)
+        for day_counts in counts_by_date.values()
+        for hour_counts in day_counts
+        for value in hour_counts
+    ]
+    return max(values, default=0)
+
+
+def _normalize_daily_counts(
+    demand_by_date: dict[str, list[list[int]]],
+    return_by_date: dict[str, list[list[int]]],
+    max_daily_count: int,
+    raw_max_count: int,
+) -> tuple[dict[str, list[list[int]]], dict[str, list[list[int]]], float]:
+    """실제 count를 toy 환경에서 다룰 수 있는 크기로 max 기준 정규화한다."""
+    if max_daily_count <= 0:
+        raise ValueError("max_daily_count must be positive")
+    if raw_max_count <= max_daily_count or raw_max_count == 0:
+        return demand_by_date, return_by_date, 1.0
+
+    scale = max_daily_count / raw_max_count
+    return (
+        _scale_daily_counts(demand_by_date, scale, max_daily_count),
+        _scale_daily_counts(return_by_date, scale, max_daily_count),
+        scale,
+    )
+
+
+def _scale_daily_counts(
+    counts_by_date: dict[str, list[list[int]]],
+    scale: float,
+    max_daily_count: int,
+) -> dict[str, list[list[int]]]:
+    """count dict의 모든 값을 같은 배율로 줄이고 0이 아닌 값은 최소 1로 보존한다."""
+    scaled_by_date: dict[str, list[list[int]]] = {}
+    for date, day_counts in counts_by_date.items():
+        scaled_by_date[date] = []
+        for hour_counts in day_counts:
+            scaled_by_date[date].append(
+                [
+                    _scale_count(value, scale=scale, max_daily_count=max_daily_count)
+                    for value in hour_counts
+                ]
+            )
+    return scaled_by_date
+
+
+def _scale_count(value: int, scale: float, max_daily_count: int) -> int:
+    """원본 count 하나를 정규화한 정수 count로 변환한다."""
+    if value <= 0:
+        return 0
+    # 예: raw_max=10, max_daily_count=5이면 scale=0.5가 되어 10, 8, 6은 5, 4, 3이 된다.
+    # 0이 아닌 작은 count는 사라지지 않도록 최소 1로 보존한다.
+    return max(1, min(max_daily_count, round(value * scale)))
 
 
 def _empty_day_counts(station_count: int) -> list[list[int]]:

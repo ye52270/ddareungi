@@ -7,6 +7,7 @@ from ddareungi_rl.config_loader import load_default_config
 from ddareungi_rl.data_profile import load_profile
 from ddareungi_rl.dqn import DQNConfig, evaluate_policy, train_dqn
 from ddareungi_rl.env import DdareungiEnv, EnvConfig
+from ddareungi_rl.experiment_log import append_dqn_experiment_log, read_experiment_log
 from ddareungi_rl.profile_builder import build_daily_profile_from_csvs, build_profile_from_csvs
 
 
@@ -18,8 +19,8 @@ class SimpleProjectTest(unittest.TestCase):
         config = load_default_config()
 
         self.assertEqual(config.station_names[0], "마곡나루역")
-        self.assertEqual(config.initial_stock_min, 2)
-        self.assertEqual(config.initial_stock_max, 8)
+        self.assertEqual(config.initial_stock_min, 1)
+        self.assertEqual(config.initial_stock_max, 5)
         self.assertEqual(len(config.demand_ranges), 24)
         self.assertEqual(len(config.return_ranges), 24)
 
@@ -59,6 +60,31 @@ class SimpleProjectTest(unittest.TestCase):
         self.assertEqual(steps, 24)
         self.assertEqual(len(observation), env.observation_space.shape[0])
         self.assertIn("unmet_demand", info)
+
+    def test_observation_includes_expected_demand(self):
+        """DQN observation에 대여소별 현재 시간대 예상 수요가 포함되는지 확인한다."""
+        config = EnvConfig(
+            station_names=("A", "B", "C"),
+            demand_ranges={hour: ((0, 0), (0, 0), (0, 0)) for hour in range(24)},
+            return_ranges={hour: ((0, 0), (0, 0), (0, 0)) for hour in range(24)},
+            daily_dates=("2025-01-01",),
+            daily_demand_counts=tuple(
+                tuple((2, 4, 6) if hour == 0 else (0, 0, 0) for hour in range(24))
+                for _ in range(1)
+            ),
+            daily_return_counts=tuple(
+                tuple((0, 0, 0) for hour in range(24))
+                for _ in range(1)
+            ),
+            station_capacity=10,
+            initial_stock_min=5,
+            initial_stock_max=5,
+        )
+        env = DdareungiEnv(config=config, seed=123)
+        observation, _ = env.reset(seed=123, options={"daily_index": 0})
+
+        self.assertEqual(len(observation), config.station_count * 2 + 3)
+        self.assertEqual(list(observation[config.station_count: config.station_count * 2]), [0.2, 0.4, 0.6])
 
     def test_baseline_evaluation_runs(self):
         """baseline policy를 여러 episode에서 평가할 수 있는지 확인한다."""
@@ -120,6 +146,34 @@ class SimpleProjectTest(unittest.TestCase):
 
         self.assertEqual(len(metrics), 2)
         self.assertIn("avg_reward", result)
+
+    def test_dqn_experiment_log_records_parameters(self):
+        """DQN 실험 로그가 parameter와 평가 결과를 JSONL로 저장하는지 확인한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            log_path = root / "dqn_runs.jsonl"
+            config = DQNConfig(episodes=3, hidden_size=8)
+            env = DdareungiEnv(seed=123)
+            env.reset(seed=123)
+
+            append_dqn_experiment_log(
+                config=config,
+                env=env,
+                eval_episodes=2,
+                eval_result={"avg_reward": -1.0, "avg_unmet_demand": 0.0},
+                last_training_metric={"episode": 3.0, "reward": -1.0},
+                model_path=root / "model.pt",
+                curve_path=root / "curve.png",
+                profile_path=root / "profile.json",
+                log_path=log_path,
+            )
+            records = read_experiment_log(log_path)
+
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["train_config"]["episodes"], 3)
+            self.assertEqual(records[0]["train_config"]["hidden_size"], 8)
+            self.assertEqual(records[0]["eval_episodes"], 2)
+            self.assertEqual(records[0]["observation_size"], env.observation_space.shape[0])
 
     def test_profile_builder_creates_real_data_profile(self):
         """작은 CSV 샘플에서 real-profile JSON을 만들고 환경 설정으로 읽는다."""
@@ -198,6 +252,74 @@ class SimpleProjectTest(unittest.TestCase):
             self.assertEqual(profile["daily_return_counts"]["2025-01-01"][9][1], 2)
             self.assertEqual(profile["daily_demand_counts"]["2025-01-02"][18][1], 1)
             self.assertEqual(profile["daily_return_counts"]["2025-01-02"][19][0], 1)
+
+    def test_daily_profile_builder_normalizes_large_counts(self):
+        """큰 실제 count를 toy 환경 크기에 맞게 max 기준으로 정규화한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rental_csv = root / "rentals.csv"
+            output_path = root / "daily_profile.json"
+            header = (
+                "자전거번호,대여일시,대여 대여소번호,대여 대여소명,대여거치대,"
+                "반납일시,반납대여소번호,반납대여소명,반납거치대,이용시간(분),"
+                "이용거리(M),생년,성별,이용자종류,대여대여소ID,반납대여소ID,자전거구분"
+            )
+            rows = [header]
+            station_counts = (10, 8, 6)
+            station_ids = ("ST-1", "ST-2", "ST-3")
+            station_names = ("마곡A", "마곡B", "마곡C")
+            bike_id = 0
+            for station_id, station_name, count in zip(station_ids, station_names, station_counts):
+                for _ in range(count):
+                    bike_id += 1
+                    rows.append(
+                        f"SPB-{bike_id},2025-01-01 08:00:00,1,{station_name},0,"
+                        f"2025-01-01 09:00:00,1,{station_name},0,60,1000,1990,M,"
+                        f"내국인,{station_id},{station_id},일반자전거"
+                    )
+            rental_csv.write_text("\n".join(rows), encoding="utf-8")
+
+            profile = build_daily_profile_from_csvs(
+                rental_paths=[rental_csv],
+                output_path=output_path,
+                station_keyword="마곡",
+                station_count=3,
+                encoding="utf-8",
+                max_daily_count=5,
+                show_progress=False,
+            )
+
+            self.assertEqual(profile["daily_demand_counts"]["2025-01-01"][8], [5, 4, 3])
+            self.assertEqual(profile["metadata"]["normalization"]["raw_max_count"], 10)
+            self.assertEqual(profile["metadata"]["normalization"]["max_daily_count"], 5)
+
+    def test_daily_profile_env_uses_real_date_counts(self):
+        """daily profile을 읽은 환경이 선택 날짜의 실제 count를 step에 적용한다."""
+        config = EnvConfig(
+            station_names=("A", "B"),
+            demand_ranges={hour: ((0, 0), (0, 0)) for hour in range(24)},
+            return_ranges={hour: ((0, 0), (0, 0)) for hour in range(24)},
+            daily_dates=("2025-01-01",),
+            daily_demand_counts=tuple(
+                tuple((2, 1) if hour == 0 else (0, 0) for hour in range(24))
+                for _ in range(1)
+            ),
+            daily_return_counts=tuple(
+                tuple((0, 1) if hour == 0 else (0, 0) for hour in range(24))
+                for _ in range(1)
+            ),
+            initial_stock_min=5,
+            initial_stock_max=5,
+        )
+        env = DdareungiEnv(config=config, seed=123)
+        env.reset(seed=123)
+
+        _, reward, _, _, info = env.step(0)
+
+        self.assertEqual(info["active_date"], "2025-01-01")
+        self.assertEqual(info["demand"], [2, 1])
+        self.assertEqual(info["returns"], [0, 1])
+        self.assertEqual(reward, 0.0)
 
 
 if __name__ == "__main__":

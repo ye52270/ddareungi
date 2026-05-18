@@ -40,10 +40,7 @@ class DemandAwarePolicy:
 
     def act(self, env: DdareungiEnv) -> int:
         """예상 부족량이 가장 큰 대여소 index를 반환한다."""
-        hour = env.time_step % env.config.episode_steps
-        expected = [
-            (low + high) / 2 for low, high in env.config.demand_ranges[hour]
-        ]
+        expected = env.expected_demand()
         return max(
             range(env.config.station_count),
             key=lambda i: (expected[i] - env.station_bikes[i], -env.station_bikes[i]),

@@ -18,17 +18,17 @@ from ddareungi_rl.env import DdareungiEnv
 class DQNConfig:
     """DQN 학습에 필요한 하이퍼파라미터를 보관한다."""
 
-    episodes: int = 100
+    episodes: int = 1000
     gamma: float = 0.95
-    learning_rate: float = 0.001
+    learning_rate: float = 0.0005
     epsilon_start: float = 1.0
     epsilon_end: float = 0.05
-    epsilon_decay: int = 1000
-    replay_size: int = 3000
+    epsilon_decay: int = 8000
+    replay_size: int = 10000
     batch_size: int = 32
     min_replay: int = 100
-    target_update: int = 100
-    hidden_size: int = 64
+    target_update: int = 200
+    hidden_size: int = 128
 
 
 class Policy(Protocol):
@@ -79,6 +79,8 @@ def train_dqn(
     env: DdareungiEnv,
     config: DQNConfig,
     seed: int = 42,
+    verbose: bool = False,
+    log_interval: int = 50,
 ) -> tuple[DQNPolicy, list[dict[str, float]]]:
     """환경에서 DQN을 학습하고 평가용 policy와 episode metrics를 반환한다."""
     random.seed(seed)
@@ -137,8 +139,23 @@ def train_dqn(
                 "epsilon": epsilon_by_step(global_step, config),
             }
         )
+        if verbose and _should_log_training(episode + 1, config.episodes, log_interval):
+            recent_metrics = metrics[-log_interval:]
+            recent_reward = float(np.mean([metric["reward"] for metric in recent_metrics]))
+            recent_unmet = float(np.mean([metric["unmet_demand"] for metric in recent_metrics]))
+            print(
+                f"[dqn-train] episode {episode + 1:03d}/{config.episodes} "
+                f"avg_reward={recent_reward:.2f} "
+                f"avg_unmet={recent_unmet:.2f} "
+                f"epsilon={metrics[-1]['epsilon']:.3f}"
+            )
 
     return DQNPolicy(online), metrics
+
+
+def _should_log_training(episode: int, total_episodes: int, log_interval: int) -> bool:
+    """학습 진행 상황을 출력할 episode인지 판단한다."""
+    return episode == 1 or episode == total_episodes or episode % log_interval == 0
 
 
 def evaluate_policy(
@@ -146,6 +163,9 @@ def evaluate_policy(
     policy: Policy,
     episodes: int = 5,
     seed: int = 1000,
+    verbose: bool = False,
+    label: str = "policy",
+    sequential_dates: bool = True,
 ) -> dict[str, float]:
     """policy를 여러 episode에서 평가하고 평균 지표를 반환한다."""
     rewards = []
@@ -153,7 +173,12 @@ def evaluate_policy(
     rejected_return_values = []
     service_rates = []
     for episode in range(episodes):
-        env.reset(seed=seed + episode)
+        options = (
+            {"daily_index": _evaluation_daily_index(episode, episodes, len(env.config.daily_dates))}
+            if sequential_dates and env.config.daily_dates
+            else None
+        )
+        _, reset_info = env.reset(seed=seed + episode, options=options)
         done = False
         reward_sum = 0.0
         served_sum = 0
@@ -171,12 +196,29 @@ def evaluate_policy(
         unmet_values.append(unmet_sum)
         rejected_return_values.append(rejected_return_sum)
         service_rates.append(served_sum / total_demand if total_demand else 1.0)
+        if verbose:
+            active_date = reset_info.get("active_date") or "-"
+            print(
+                f"[{label}] episode {episode + 1:02d}/{episodes} "
+                f"date={active_date} reward={reward_sum:.1f} "
+                f"unmet={unmet_sum} rejected={rejected_return_sum} "
+                f"service_rate={service_rates[-1]:.3f}"
+            )
     return {
         "avg_reward": float(np.mean(rewards)),
         "avg_unmet_demand": float(np.mean(unmet_values)),
         "avg_rejected_returns": float(np.mean(rejected_return_values)),
         "avg_service_rate": float(np.mean(service_rates)),
     }
+
+
+def _evaluation_daily_index(episode: int, episode_count: int, day_count: int) -> int:
+    """평가 episode가 전체 날짜에 고르게 분포하도록 daily index를 고른다."""
+    if day_count <= 0:
+        raise ValueError("day_count must be positive")
+    if episode_count <= 1:
+        return 0
+    return round(episode * (day_count - 1) / (episode_count - 1))
 
 
 def save_model(policy: DQNPolicy, path: Path) -> None:

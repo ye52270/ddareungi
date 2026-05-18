@@ -9,14 +9,14 @@ station:
   # 한 대여소가 보관할 수 있는 최대 자전거 수이다.
   capacity: 10
   # episode reset 시 각 대여소의 초기 자전거 수를 이 범위에서 샘플링한다.
-  initial_stock_min: 2
-  initial_stock_max: 8
+  initial_stock_min: 1
+  initial_stock_max: 5
 
 truck:
   # 트럭이 한 번에 싣고 다닐 수 있는 최대 자전거 수이다.
   capacity: 5
   # episode 시작 시 트럭에 실려 있는 자전거 수이다.
-  initial_bikes: 3
+  initial_bikes: 5
 
 simulation:
   # 하루를 24개 시간 step으로 단순화한다.

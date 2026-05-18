@@ -1,0 +1,192 @@
+"""Baseline과 DQN 평가 결과를 비교하는 간단한 시각화 도구."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+
+BASELINE_CHART_PATH = Path("outputs/figures/baseline_comparison.png")
+DQN_COMPARISON_CHART_PATH = Path("outputs/figures/dqn_vs_baseline_comparison.png")
+DQN_TRAINING_CHART_PATH = Path("outputs/figures/dqn_training_curve.png")
+
+
+def save_baseline_comparison_chart(
+    results: dict[str, dict[str, float]],
+    output_path: Path = BASELINE_CHART_PATH,
+    title: str = "따릉이 Baseline 정책 비교",
+) -> Path:
+    """policy별 reward, unmet demand, rejected return, service rate 비교 그래프를 저장한다."""
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "matplotlib이 설치되어 있지 않아 그래프를 저장하지 못했습니다. "
+            "`pip install -e .` 또는 `pip install matplotlib` 후 다시 실행하세요."
+        ) from exc
+
+    _configure_korean_font(plt)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_names = list(results)
+    reward_values = [results[name]["avg_reward"] for name in policy_names]
+    unmet_values = [results[name]["avg_unmet_demand"] for name in policy_names]
+    rejected_values = [results[name]["avg_rejected_returns"] for name in policy_names]
+    service_values = [results[name]["avg_service_rate"] for name in policy_names]
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig.suptitle(title, fontsize=15, fontweight="bold")
+
+    _draw_bar(axes[0, 0], policy_names, reward_values, "평균 보상", higher_is_better=True)
+    _draw_bar(axes[0, 1], policy_names, unmet_values, "미충족 수요", higher_is_better=False)
+    _draw_bar(axes[1, 0], policy_names, rejected_values, "반납 실패", higher_is_better=False)
+    _draw_bar(axes[1, 1], policy_names, service_values, "서비스율", higher_is_better=True)
+
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+    return output_path
+
+
+def save_dqn_training_curve(
+    metrics: list[dict[str, float]],
+    output_path: Path = DQN_TRAINING_CHART_PATH,
+    baseline_reward: float | None = None,
+    baseline_label: str = "low-stock baseline",
+) -> Path:
+    """DQN episode별 reward와 unmet demand를 report 친화적인 학습 곡선으로 저장한다."""
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "matplotlib이 설치되어 있지 않아 그래프를 저장하지 못했습니다. "
+            "`pip install -e .` 또는 `pip install matplotlib` 후 다시 실행하세요."
+        ) from exc
+
+    _configure_korean_font(plt)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    episodes = [metric["episode"] for metric in metrics]
+    rewards = [metric["reward"] for metric in metrics]
+    unmet_values = [metric["unmet_demand"] for metric in metrics]
+    reward_average = _moving_average(rewards)
+    unmet_average = _moving_average(unmet_values)
+    best_reward_average = _best_so_far(reward_average)
+    recent_reward = _recent_average(rewards)
+    recent_unmet = _recent_average(unmet_values)
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    fig.suptitle("DQN 학습 추세: 평균 보상이 baseline을 넘는가?", fontsize=15, fontweight="bold")
+
+    axes[0].plot(episodes, rewards, color="#a9b4c2", linewidth=0.8, alpha=0.35, label="episode 보상")
+    axes[0].plot(episodes, reward_average, color="#f2994a", linewidth=2.2, label="최근 20 episode 평균")
+    axes[0].plot(episodes, best_reward_average, color="#2f80ed", linewidth=2, label="최고 이동평균")
+    if baseline_reward is not None:
+        axes[0].axhline(
+            baseline_reward,
+            color="#27ae60",
+            linestyle="--",
+            linewidth=2,
+            label=f"{baseline_label} 평균 보상",
+        )
+        axes[0].fill_between(
+            episodes,
+            baseline_reward,
+            max(max(best_reward_average), baseline_reward),
+            color="#27ae60",
+            alpha=0.08,
+        )
+    axes[0].set_title("보상 추세")
+    axes[0].set_ylabel("보상")
+    axes[0].grid(alpha=0.25)
+    axes[0].legend()
+    axes[0].text(
+        0.01,
+        0.04,
+        f"위로 갈수록 좋음 | 최근 100 episode 평균: {recent_reward:.2f}",
+        transform=axes[0].transAxes,
+        fontsize=10,
+        bbox={"facecolor": "white", "alpha": 0.82, "edgecolor": "#d0d7de"},
+    )
+
+    axes[1].plot(episodes, unmet_values, color="#a9b4c2", linewidth=0.8, alpha=0.35, label="episode 미충족")
+    axes[1].plot(episodes, unmet_average, color="#eb5757", linewidth=2.2, label="최근 20 episode 평균")
+    axes[1].set_title("헛걸음 감소 추세")
+    axes[1].set_xlabel("Episode")
+    axes[1].set_ylabel("건수")
+    axes[1].grid(alpha=0.25)
+    axes[1].legend()
+    axes[1].text(
+        0.01,
+        0.86,
+        f"아래로 갈수록 좋음 | 최근 100 episode 평균: {recent_unmet:.2f}건",
+        transform=axes[1].transAxes,
+        fontsize=10,
+        bbox={"facecolor": "white", "alpha": 0.82, "edgecolor": "#d0d7de"},
+    )
+
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+    return output_path
+
+
+def _moving_average(values: list[float], window_size: int = 20) -> list[float]:
+    """학습 곡선을 읽기 쉽도록 이동평균 값을 계산한다."""
+    averages = []
+    for index in range(len(values)):
+        window = values[max(0, index - window_size + 1): index + 1]
+        averages.append(sum(window) / len(window))
+    return averages
+
+
+def _best_so_far(values: list[float]) -> list[float]:
+    """각 episode까지 관측된 이동평균 reward의 최고값을 누적 계산한다."""
+    best_values = []
+    best_value = float("-inf")
+    for value in values:
+        best_value = max(best_value, value)
+        best_values.append(best_value)
+    return best_values
+
+
+def _recent_average(values: list[float], window_size: int = 100) -> float:
+    """마지막 window_size개 episode의 평균값을 반환한다."""
+    if not values:
+        return 0.0
+    window = values[-window_size:]
+    return sum(window) / len(window)
+
+
+def _configure_korean_font(plt: object) -> None:
+    """그래프의 한국어 label이 깨지지 않도록 한글 폰트 후보를 설정한다."""
+    from matplotlib import font_manager
+
+    preferred_fonts = ("AppleGothic", "Malgun Gothic", "NanumGothic")
+    installed_fonts = {font.name for font in font_manager.fontManager.ttflist}
+    korean_font = next(
+        (font_name for font_name in preferred_fonts if font_name in installed_fonts),
+        "DejaVu Sans",
+    )
+    plt.rcParams["font.family"] = korean_font
+    plt.rcParams["axes.unicode_minus"] = False
+
+
+def _draw_bar(
+    axis: object,
+    labels: list[str],
+    values: list[float],
+    title: str,
+    higher_is_better: bool,
+) -> None:
+    """하나의 metric에 대한 막대 그래프를 그리고 최고 policy를 강조한다."""
+    best_value = max(values) if higher_is_better else min(values)
+    colors = ["#2f80ed" if value == best_value else "#a9b4c2" for value in values]
+    axis.bar(labels, values, color=colors)
+    axis.set_title(title)
+    axis.tick_params(axis="x", rotation=18)
+    axis.grid(axis="y", alpha=0.25)
+    for index, value in enumerate(values):
+        axis.text(index, value, f"{value:.2f}", ha="center", va=_label_vertical_alignment(value))
+
+
+def _label_vertical_alignment(value: float) -> str:
+    """막대 값의 부호에 따라 숫자 label 위치를 보기 좋게 정한다."""
+    return "top" if value < 0 else "bottom"
