@@ -9,6 +9,8 @@ BASELINE_CHART_PATH = Path("outputs/figures/baseline_comparison.png")
 DQN_COMPARISON_CHART_PATH = Path("outputs/figures/dqn_vs_baseline_comparison.png")
 DQN_TRAINING_CHART_PATH = Path("outputs/figures/dqn_training_curve.png")
 ACTION_DISTRIBUTION_CHART_PATH = Path("outputs/figures/action_distribution.png")
+DQN_MULTI_SEED_CHART_PATH = Path("outputs/figures/dqn_multiseed_summary.png")
+ALGORITHM_COMPARISON_CHART_PATH = Path("outputs/figures/algorithm_comparison.png")
 
 
 def save_baseline_comparison_chart(
@@ -159,6 +161,70 @@ def save_action_distribution_chart(
     for index, value in enumerate(values):
         axis.text(index, value, f"{value}회\n{value / total:.1%}", ha="center", va="bottom")
     fig.tight_layout()
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+    return output_path
+
+
+def save_multiseed_summary_chart(
+    rows: list[dict[str, float]],
+    output_path: Path = DQN_MULTI_SEED_CHART_PATH,
+) -> Path:
+    """seed별 DQN 평가 reward와 unmet demand 분포를 그래프로 저장한다."""
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "matplotlib이 설치되어 있지 않아 그래프를 저장하지 못했습니다. "
+            "`pip install -e .` 또는 `pip install matplotlib` 후 다시 실행하세요."
+        ) from exc
+
+    _configure_korean_font(plt)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    seeds = [str(int(row["seed"])) for row in rows]
+    rewards = [row["avg_reward"] for row in rows]
+    unmet_values = [row["avg_unmet_demand"] for row in rows]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
+    fig.suptitle("DQN Multi-seed 안정성 확인", fontsize=15, fontweight="bold")
+    _draw_bar(axes[0], seeds, rewards, "Seed별 평균 보상", higher_is_better=True)
+    _draw_bar(axes[1], seeds, unmet_values, "Seed별 미충족 수요", higher_is_better=False)
+    axes[0].set_xlabel("seed")
+    axes[1].set_xlabel("seed")
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+    return output_path
+
+
+def save_algorithm_comparison_chart(
+    rows: list[dict[str, float | str]],
+    output_path: Path = ALGORITHM_COMPARISON_CHART_PATH,
+) -> Path:
+    """알고리즘별 reward, unmet, rejected return 비교 그래프를 저장한다."""
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "matplotlib이 설치되어 있지 않아 그래프를 저장하지 못했습니다. "
+            "`pip install -e .` 또는 `pip install matplotlib` 후 다시 실행하세요."
+        ) from exc
+
+    _configure_korean_font(plt)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    labels = [str(row["algorithm"]) for row in rows]
+    rewards = [float(row["avg_reward"]) for row in rows]
+    unmet_values = [float(row["avg_unmet_demand"]) for row in rows]
+    rejected_values = [float(row["avg_rejected_returns"]) for row in rows]
+
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.8))
+    fig.suptitle("알고리즘별 성능 비교", fontsize=15, fontweight="bold")
+    _draw_bar(axes[0], labels, rewards, "평균 보상", higher_is_better=True)
+    _draw_bar(axes[1], labels, unmet_values, "미충족 수요", higher_is_better=False)
+    _draw_bar(axes[2], labels, rejected_values, "반납 실패", higher_is_better=False)
+    for axis in axes:
+        axis.tick_params(axis="x", rotation=18)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
     return output_path

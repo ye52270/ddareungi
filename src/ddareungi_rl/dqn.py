@@ -1,343 +1,42 @@
-"""교육용으로 단순화한 PyTorch DQN 학습 코드."""
+"""이전 import 경로를 위한 DQN 계열 호환 모듈.
 
-from __future__ import annotations
+실제 알고리즘 구현은 `ddareungi_rl.algorithms` 패키지에 있다.
+수업용으로 알고리즘별 수식을 더 잘 보이게 하려고 파일을 분리했다.
+"""
 
-from dataclasses import dataclass
-from pathlib import Path
-import random
-from typing import Any, Protocol
+from ddareungi_rl.algorithms.common import (
+    DQNConfig,
+    DQNPolicy,
+    GreedyQPolicy,
+    Policy,
+    evaluate_policy,
+    evaluate_policy_with_trace,
+    epsilon_by_step,
+    save_model,
+    train_one_batch,
+    train_q_learning,
+)
+from ddareungi_rl.algorithms.double_dqn import compute_double_dqn_target, train_double_dqn
+from ddareungi_rl.algorithms.dqn import compute_dqn_target, train_dqn
+from ddareungi_rl.algorithms.dueling_dqn import train_dueling_dqn
+from ddareungi_rl.algorithms.networks import DuelingQNetwork, QNetwork
 
-import numpy as np
-import torch
-from torch import nn
-
-from ddareungi_rl.env import DdareungiEnv
-
-
-@dataclass
-class DQNConfig:
-    """DQN 학습에 필요한 하이퍼파라미터를 보관한다."""
-
-    episodes: int = 1000
-    gamma: float = 0.95
-    learning_rate: float = 0.0005
-    epsilon_start: float = 1.0
-    epsilon_end: float = 0.05
-    epsilon_decay: int = 8000
-    replay_size: int = 10000
-    batch_size: int = 32
-    min_replay: int = 100
-    target_update: int = 200
-    hidden_size: int = 128
-
-
-class Policy(Protocol):
-    """평가 함수가 요구하는 policy 인터페이스."""
-
-    def act(self, env: DdareungiEnv) -> int:
-        """현재 환경에서 action을 선택한다."""
-
-
-class QNetwork(nn.Module):
-    """작은 MLP로 Q(s, a)를 근사한다."""
-
-    def __init__(self, state_size: int, action_size: int, hidden_size: int) -> None:
-        """입력 크기, action 수, hidden 크기로 네트워크를 만든다."""
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(state_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, action_size),
-        )
-
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        """state batch를 받아 action별 Q value를 반환한다."""
-        return self.layers(state)
-
-
-class DQNPolicy:
-    """학습된 Q-network로 greedy action을 선택한다."""
-
-    def __init__(self, network: QNetwork) -> None:
-        """Q-network를 받아 평가용 policy를 만든다."""
-        self.network = network
-
-    def act(self, env: DdareungiEnv) -> int:
-        """현재 observation에서 Q value가 가장 큰 action을 반환한다."""
-        state = torch.tensor(env._observation(), dtype=torch.float32).unsqueeze(0)
-        with torch.no_grad():
-            return int(torch.argmax(self.network(state), dim=1).item())
-
-
-def epsilon_by_step(step: int, config: DQNConfig) -> float:
-    """현재 step의 epsilon 값을 선형 감소 방식으로 계산한다."""
-    ratio = min(1.0, step / config.epsilon_decay)
-    return config.epsilon_start + ratio * (config.epsilon_end - config.epsilon_start)
-
-
-def train_dqn(
-    env: DdareungiEnv,
-    config: DQNConfig,
-    seed: int = 42,
-    verbose: bool = False,
-    log_interval: int = 50,
-) -> tuple[DQNPolicy, list[dict[str, float]]]:
-    """환경에서 DQN을 학습하고 평가용 policy와 episode metrics를 반환한다."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-    online = QNetwork(
-        env.observation_space.shape[0],
-        env.action_space.n,
-        config.hidden_size,
-    )
-    target = QNetwork(
-        env.observation_space.shape[0],
-        env.action_space.n,
-        config.hidden_size,
-    )
-    target.load_state_dict(online.state_dict())
-    optimizer = torch.optim.Adam(online.parameters(), lr=config.learning_rate)
-    replay: list[tuple[np.ndarray, int, float, np.ndarray, bool]] = []
-    metrics: list[dict[str, float]] = []
-    global_step = 0
-
-    for episode in range(config.episodes):
-        state, _ = env.reset(seed=seed + episode)
-        done = False
-        episode_reward = 0.0
-        episode_unmet = 0
-        episode_rejected_returns = 0
-        episode_movement_cost = 0
-        episode_losses = []
-
-        while not done:
-            epsilon = epsilon_by_step(global_step, config)
-            if random.random() < epsilon:
-                action = env.action_space.sample()
-            else:
-                action = DQNPolicy(online).act(env)
-
-            next_state, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            replay.append((state, action, reward, next_state, done))
-            replay = replay[-config.replay_size :]
-            episode_reward += reward
-            episode_unmet += int(info["unmet_demand"])
-            episode_rejected_returns += int(info["rejected_returns"])
-            episode_movement_cost += int(info["movement_cost"])
-
-            if len(replay) >= config.min_replay:
-                episode_losses.append(_learn_from_batch(online, target, optimizer, replay, config))
-            if global_step % config.target_update == 0:
-                target.load_state_dict(online.state_dict())
-
-            state = next_state
-            global_step += 1
-
-        metrics.append(
-            {
-                "episode": float(episode + 1),
-                "reward": episode_reward,
-                "unmet_demand": float(episode_unmet),
-                "rejected_returns": float(episode_rejected_returns),
-                "movement_cost": float(episode_movement_cost),
-                "epsilon": epsilon_by_step(global_step, config),
-                "loss": float(np.mean(episode_losses)) if episode_losses else 0.0,
-            }
-        )
-        if verbose and _should_log_training(episode + 1, config.episodes, log_interval):
-            recent_metrics = metrics[-log_interval:]
-            recent_reward = float(np.mean([metric["reward"] for metric in recent_metrics]))
-            recent_unmet = float(np.mean([metric["unmet_demand"] for metric in recent_metrics]))
-            print(
-                f"[dqn-train] episode {episode + 1:03d}/{config.episodes} "
-                f"avg_reward={recent_reward:.2f} "
-                f"avg_unmet={recent_unmet:.2f} "
-                f"epsilon={metrics[-1]['epsilon']:.3f}"
-            )
-
-    return DQNPolicy(online), metrics
-
-
-def _should_log_training(episode: int, total_episodes: int, log_interval: int) -> bool:
-    """학습 진행 상황을 출력할 episode인지 판단한다."""
-    return episode == 1 or episode == total_episodes or episode % log_interval == 0
-
-
-def evaluate_policy(
-    env: DdareungiEnv,
-    policy: Policy,
-    episodes: int = 5,
-    seed: int = 1000,
-    verbose: bool = False,
-    label: str = "policy",
-    sequential_dates: bool = True,
-) -> dict[str, float]:
-    """policy를 여러 episode에서 평가하고 평균 지표를 반환한다."""
-    return evaluate_policy_with_trace(
-        env=env,
-        policy=policy,
-        episodes=episodes,
-        seed=seed,
-        verbose=verbose,
-        label=label,
-        sequential_dates=sequential_dates,
-    )["summary"]
-
-
-def evaluate_policy_with_trace(
-    env: DdareungiEnv,
-    policy: Policy,
-    episodes: int = 5,
-    seed: int = 1000,
-    verbose: bool = False,
-    label: str = "policy",
-    sequential_dates: bool = True,
-) -> dict[str, Any]:
-    """policy 평가 summary, episode별 결과, step trace, action 분포를 함께 반환한다."""
-    rewards = []
-    unmet_values = []
-    rejected_return_values = []
-    movement_cost_values = []
-    service_rates = []
-    episode_rows = []
-    step_rows = []
-    action_counts = {station_id: 0 for station_id in range(env.config.station_count)}
-    same_location_count = 0
-    total_steps = 0
-    for episode in range(episodes):
-        options = (
-            {"daily_index": _evaluation_daily_index(episode, episodes, len(env.config.daily_dates))}
-            if sequential_dates and env.config.daily_dates
-            else None
-        )
-        _, reset_info = env.reset(seed=seed + episode, options=options)
-        done = False
-        reward_sum = 0.0
-        served_sum = 0
-        unmet_sum = 0
-        rejected_return_sum = 0
-        movement_cost_sum = 0
-        episode_same_location_count = 0
-        active_date = reset_info.get("active_date") or "-"
-        while not done:
-            previous_location = env.truck_location
-            action = int(policy.act(env))
-            if action == previous_location:
-                same_location_count += 1
-                episode_same_location_count += 1
-            action_counts[action] += 1
-            _, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            reward_sum += reward
-            served_sum += int(info["served_demand"])
-            unmet_sum += int(info["unmet_demand"])
-            rejected_return_sum += int(info["rejected_returns"])
-            movement_cost_sum += int(info["movement_cost"])
-            total_steps += 1
-            step_rows.append(
-                {
-                    "policy": label,
-                    "episode": episode + 1,
-                    "date": active_date,
-                    "time_step": int(info["time_step"]),
-                    "action": action,
-                    "previous_truck_location": previous_location,
-                    "truck_location": int(info["truck_location"]),
-                    "truck_bikes": int(info["truck_bikes"]),
-                    "reward": float(reward),
-                    "served_demand": int(info["served_demand"]),
-                    "unmet_demand": int(info["unmet_demand"]),
-                    "rejected_returns": int(info["rejected_returns"]),
-                    "movement_cost": int(info["movement_cost"]),
-                    "moved_bikes": int(info["moved_bikes"]),
-                    "station_bikes": "|".join(str(value) for value in info["station_bikes"]),
-                    "demand": "|".join(str(value) for value in info["demand"]),
-                    "returns": "|".join(str(value) for value in info["returns"]),
-                }
-            )
-        total_demand = served_sum + unmet_sum
-        rewards.append(reward_sum)
-        unmet_values.append(unmet_sum)
-        rejected_return_values.append(rejected_return_sum)
-        movement_cost_values.append(movement_cost_sum)
-        service_rates.append(served_sum / total_demand if total_demand else 1.0)
-        episode_rows.append(
-            {
-                "policy": label,
-                "episode": episode + 1,
-                "date": active_date,
-                "reward": reward_sum,
-                "served_demand": served_sum,
-                "unmet_demand": unmet_sum,
-                "rejected_returns": rejected_return_sum,
-                "movement_cost": movement_cost_sum,
-                "service_rate": service_rates[-1],
-                "same_location_steps": episode_same_location_count,
-            }
-        )
-        if verbose:
-            print(
-                f"[{label}] episode {episode + 1:02d}/{episodes} "
-                f"date={active_date} reward={reward_sum:.1f} "
-                f"unmet={unmet_sum} rejected={rejected_return_sum} "
-                f"service_rate={service_rates[-1]:.3f}"
-            )
-    return {
-        "summary": {
-            "avg_reward": float(np.mean(rewards)),
-            "avg_unmet_demand": float(np.mean(unmet_values)),
-            "avg_rejected_returns": float(np.mean(rejected_return_values)),
-            "avg_movement_cost": float(np.mean(movement_cost_values)),
-            "avg_service_rate": float(np.mean(service_rates)),
-            "same_location_rate": same_location_count / total_steps if total_steps else 0.0,
-        },
-        "episodes": episode_rows,
-        "steps": step_rows,
-        "action_counts": action_counts,
-    }
-
-
-def _evaluation_daily_index(episode: int, episode_count: int, day_count: int) -> int:
-    """평가 episode가 전체 날짜에 고르게 분포하도록 daily index를 고른다."""
-    if day_count <= 0:
-        raise ValueError("day_count must be positive")
-    if episode_count <= 1:
-        return 0
-    return round(episode * (day_count - 1) / (episode_count - 1))
-
-
-def save_model(policy: DQNPolicy, path: Path) -> None:
-    """학습된 DQN policy의 network weight를 저장한다."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(policy.network.state_dict(), path)
-
-
-def _learn_from_batch(
-    online: QNetwork,
-    target: QNetwork,
-    optimizer: torch.optim.Optimizer,
-    replay: list[tuple[np.ndarray, int, float, np.ndarray, bool]],
-    config: DQNConfig,
-) -> float:
-    """replay buffer에서 batch를 뽑아 DQN 손실을 한 번 학습한다."""
-    batch = random.sample(replay, config.batch_size)
-    states, actions, rewards, next_states, dones = zip(*batch)
-    state_tensor = torch.tensor(np.array(states), dtype=torch.float32)
-    action_tensor = torch.tensor(actions, dtype=torch.int64).unsqueeze(1)
-    reward_tensor = torch.tensor(rewards, dtype=torch.float32)
-    next_state_tensor = torch.tensor(np.array(next_states), dtype=torch.float32)
-    done_tensor = torch.tensor(dones, dtype=torch.float32)
-
-    q_values = online(state_tensor).gather(1, action_tensor).squeeze(1)
-    with torch.no_grad():
-        next_q_values = target(next_state_tensor).max(dim=1).values
-        targets = reward_tensor + config.gamma * next_q_values * (1.0 - done_tensor)
-
-    loss = nn.functional.mse_loss(q_values, targets)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    return float(loss.item())
+__all__ = [
+    "DQNConfig",
+    "DQNPolicy",
+    "DuelingQNetwork",
+    "GreedyQPolicy",
+    "Policy",
+    "QNetwork",
+    "compute_double_dqn_target",
+    "compute_dqn_target",
+    "evaluate_policy",
+    "evaluate_policy_with_trace",
+    "epsilon_by_step",
+    "save_model",
+    "train_double_dqn",
+    "train_dqn",
+    "train_dueling_dqn",
+    "train_one_batch",
+    "train_q_learning",
+]

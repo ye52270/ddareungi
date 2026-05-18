@@ -4,12 +4,24 @@ from pathlib import Path
 
 from ddareungi_rl.baselines import LowStockPolicy, NoOpPolicy, RandomPolicy
 from ddareungi_rl.config_loader import load_default_config
+from ddareungi_rl.dashboard import save_experiment_dashboard
 from ddareungi_rl.data_profile import load_profile
-from ddareungi_rl.dqn import DQNConfig, evaluate_policy, train_dqn
+from ddareungi_rl.dqn import (
+    DQNConfig,
+    evaluate_policy,
+    train_double_dqn,
+    train_dqn,
+    train_dueling_dqn,
+)
 from ddareungi_rl.env import DdareungiEnv, EnvConfig
 from ddareungi_rl.experiment_log import append_dqn_experiment_log, read_experiment_log
 from ddareungi_rl.profile_builder import build_daily_profile_from_csvs, build_profile_from_csvs
-from ddareungi_rl.reporting import save_baseline_vs_dqn_csv, save_training_history_csv
+from ddareungi_rl.reporting import (
+    save_algorithm_comparison_from_reports,
+    save_baseline_vs_dqn_csv,
+    save_multiseed_reports,
+    save_training_history_csv,
+)
 
 
 class SimpleProjectTest(unittest.TestCase):
@@ -148,6 +160,42 @@ class SimpleProjectTest(unittest.TestCase):
         self.assertEqual(len(metrics), 2)
         self.assertIn("avg_reward", result)
 
+    def test_dueling_dqn_training_smoke(self):
+        """Dueling DQN 학습이 DQN과 같은 환경/평가 흐름에서 실행되는지 확인한다."""
+        env = DdareungiEnv(seed=123)
+        config = DQNConfig(
+            episodes=2,
+            batch_size=4,
+            min_replay=4,
+            target_update=4,
+            epsilon_decay=10,
+            hidden_size=8,
+        )
+
+        policy, metrics = train_dueling_dqn(env, config=config, seed=123)
+        result = evaluate_policy(env, policy, episodes=1, seed=999)
+
+        self.assertEqual(len(metrics), 2)
+        self.assertIn("avg_reward", result)
+
+    def test_double_dqn_training_smoke(self):
+        """Double DQN 학습이 DQN과 같은 환경/평가 흐름에서 실행되는지 확인한다."""
+        env = DdareungiEnv(seed=123)
+        config = DQNConfig(
+            episodes=2,
+            batch_size=4,
+            min_replay=4,
+            target_update=4,
+            epsilon_decay=10,
+            hidden_size=8,
+        )
+
+        policy, metrics = train_double_dqn(env, config=config, seed=123)
+        result = evaluate_policy(env, policy, episodes=1, seed=999)
+
+        self.assertEqual(len(metrics), 2)
+        self.assertIn("avg_reward", result)
+
     def test_dqn_experiment_log_records_parameters(self):
         """DQN 실험 로그가 parameter와 평가 결과를 JSONL로 저장하는지 확인한다."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -222,6 +270,187 @@ class SimpleProjectTest(unittest.TestCase):
             self.assertIn("policy,avg_reward", comparison_path.read_text(encoding="utf-8"))
             self.assertIn("low-stock,-3.0", comparison_path.read_text(encoding="utf-8"))
             self.assertIn("episode,reward", history_path.read_text(encoding="utf-8"))
+
+    def test_dashboard_html_is_created_from_reports(self):
+        """저장된 CSV/JSON report로 한 장짜리 HTML dashboard를 생성한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            report_dir = root / "reports"
+            figure_dir = root / "figures"
+            report_dir.mkdir()
+            figure_dir.mkdir()
+            (report_dir / "experiment_config.json").write_text(
+                """
+                {
+                  "environment": {
+                    "station_names": ["A", "B"],
+                    "station_count": 2,
+                    "episode_steps": 24,
+                    "profile_path": "profile.json",
+                    "daily_profile_dates": 10
+                  },
+                  "mdp": {
+                    "state": ["station_bikes", "expected_demand"],
+                    "action": "next station",
+                    "reward": "-10 * unmet_demand"
+                  },
+                  "dqn_config": {"episodes": 3}
+                }
+                """,
+                encoding="utf-8",
+            )
+            save_baseline_vs_dqn_csv(
+                {
+                    "low-stock": {
+                        "avg_reward": -3.0,
+                        "avg_unmet_demand": 1.0,
+                        "avg_rejected_returns": 0.5,
+                        "avg_movement_cost": 2.0,
+                        "avg_service_rate": 0.9,
+                        "same_location_rate": 0.1,
+                    },
+                    "dqn": {
+                        "avg_reward": -2.0,
+                        "avg_unmet_demand": 0.5,
+                        "avg_rejected_returns": 0.2,
+                        "avg_movement_cost": 1.0,
+                        "avg_service_rate": 0.95,
+                        "same_location_rate": 0.2,
+                    },
+                },
+                output_path=report_dir / "baseline_vs_dqn.csv",
+            )
+            save_training_history_csv(
+                [
+                    {
+                        "episode": 1.0,
+                        "reward": -2.0,
+                        "unmet_demand": 0.0,
+                        "rejected_returns": 0.0,
+                        "movement_cost": 1.0,
+                        "epsilon": 0.9,
+                        "loss": 0.1,
+                    }
+                ],
+                output_path=report_dir / "dqn_training_history.csv",
+            )
+            (report_dir / "action_distribution.csv").write_text(
+                "policy,action,station_name,count,ratio\n"
+                "dqn,0,A,10,0.5\n"
+                "dqn,1,B,10,0.5\n",
+                encoding="utf-8",
+            )
+            (report_dir / "dqn_evaluation_episodes.csv").write_text(
+                "policy,episode,date,reward,served_demand,unmet_demand,"
+                "rejected_returns,movement_cost,service_rate,same_location_steps\n"
+                "dqn,1,2025-01-01,-2,10,0,0,1,1.0,2\n",
+                encoding="utf-8",
+            )
+            (report_dir / "algorithm_comparison.csv").write_text(
+                "algorithm,avg_reward,avg_unmet_demand,avg_rejected_returns,"
+                "avg_movement_cost,avg_service_rate,same_location_rate\n"
+                "low-stock,-3,1,0.5,2,0.9,0.1\n"
+                "dqn,-2,0.5,0.2,1,0.95,0.2\n",
+                encoding="utf-8",
+            )
+
+            dashboard_path = save_experiment_dashboard(
+                output_path=report_dir / "experiment_dashboard.html",
+                report_dir=report_dir,
+                figure_dir=figure_dir,
+            )
+            html = dashboard_path.read_text(encoding="utf-8")
+
+            self.assertIn("따릉이 RL Experiment Dashboard", html)
+            self.assertIn("DQN Avg Reward", html)
+            self.assertIn("전체 알고리즘 비교", html)
+            self.assertIn("low-stock 대비 reward", html)
+
+    def test_multiseed_reports_are_created(self):
+        """seed별 DQN 평가 결과와 summary CSV를 저장한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            report_paths = save_multiseed_reports(
+                [
+                    {
+                        "seed": 42.0,
+                        "avg_reward": -2.0,
+                        "avg_unmet_demand": 0.5,
+                        "avg_rejected_returns": 0.1,
+                        "avg_movement_cost": 1.0,
+                        "avg_service_rate": 0.95,
+                        "same_location_rate": 0.2,
+                    },
+                    {
+                        "seed": 142.0,
+                        "avg_reward": -4.0,
+                        "avg_unmet_demand": 1.5,
+                        "avg_rejected_returns": 0.3,
+                        "avg_movement_cost": 2.0,
+                        "avg_service_rate": 0.9,
+                        "same_location_rate": 0.4,
+                    },
+                ],
+                runs_path=root / "runs.csv",
+                summary_path=root / "summary.csv",
+            )
+
+            runs_text = report_paths["runs"].read_text(encoding="utf-8")
+            summary_text = report_paths["summary"].read_text(encoding="utf-8")
+
+            self.assertIn("seed,avg_reward", runs_text)
+            self.assertIn("42.0,-2.0", runs_text)
+            self.assertIn("avg_reward,-3.0", summary_text)
+
+    def test_algorithm_comparison_collects_saved_results(self):
+        """저장된 알고리즘별 결과 CSV를 하나의 비교표로 모은다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            save_baseline_vs_dqn_csv(
+                {
+                    "low-stock": {
+                        "avg_reward": -3.0,
+                        "avg_unmet_demand": 1.0,
+                        "avg_rejected_returns": 0.5,
+                        "avg_movement_cost": 2.0,
+                        "avg_service_rate": 0.9,
+                        "same_location_rate": 0.1,
+                    },
+                    "dqn": {
+                        "avg_reward": -2.0,
+                        "avg_unmet_demand": 0.5,
+                        "avg_rejected_returns": 0.2,
+                        "avg_movement_cost": 1.0,
+                        "avg_service_rate": 0.95,
+                        "same_location_rate": 0.2,
+                    },
+                },
+                output_path=root / "baseline_vs_dqn.csv",
+            )
+            save_baseline_vs_dqn_csv(
+                {
+                    "double_dqn": {
+                        "avg_reward": -1.5,
+                        "avg_unmet_demand": 0.4,
+                        "avg_rejected_returns": 0.2,
+                        "avg_movement_cost": 1.0,
+                        "avg_service_rate": 0.96,
+                        "same_location_rate": 0.2,
+                    },
+                },
+                output_path=root / "double_dqn_vs_baseline.csv",
+            )
+
+            comparison_path = save_algorithm_comparison_from_reports(
+                report_dir=root,
+                output_path=root / "algorithm_comparison.csv",
+            )
+            text = comparison_path.read_text(encoding="utf-8")
+
+            self.assertIn("algorithm,avg_reward", text)
+            self.assertIn("low-stock,-3.0", text)
+            self.assertIn("dqn,-2.0", text)
+            self.assertIn("double_dqn,-1.5", text)
 
     def test_profile_builder_creates_real_data_profile(self):
         """작은 CSV 샘플에서 real-profile JSON을 만들고 환경 설정으로 읽는다."""

@@ -20,6 +20,9 @@ DQN_TRAINING_HISTORY_PATH = REPORT_DIR / "dqn_training_history.csv"
 ACTION_DISTRIBUTION_PATH = REPORT_DIR / "action_distribution.csv"
 DQN_EVALUATION_EPISODES_PATH = REPORT_DIR / "dqn_evaluation_episodes.csv"
 DQN_STEP_TRACE_PATH = REPORT_DIR / "dqn_step_trace.csv"
+DQN_MULTI_SEED_RUNS_PATH = REPORT_DIR / "dqn_multiseed_runs.csv"
+DQN_MULTI_SEED_SUMMARY_PATH = REPORT_DIR / "dqn_multiseed_summary.csv"
+ALGORITHM_COMPARISON_PATH = REPORT_DIR / "algorithm_comparison.csv"
 
 
 def save_experiment_config(
@@ -197,6 +200,68 @@ def save_policy_trace_reports(
     }
 
 
+def save_multiseed_reports(
+    rows: list[dict[str, float]],
+    *,
+    runs_path: Path = DQN_MULTI_SEED_RUNS_PATH,
+    summary_path: Path = DQN_MULTI_SEED_SUMMARY_PATH,
+) -> dict[str, Path]:
+    """seed별 DQN 평가 결과와 평균/표준편차 summary를 CSV로 저장한다."""
+    run_fields = [
+        "seed",
+        "avg_reward",
+        "avg_unmet_demand",
+        "avg_rejected_returns",
+        "avg_movement_cost",
+        "avg_service_rate",
+        "same_location_rate",
+    ]
+    _write_csv(runs_path, run_fields, rows)
+    summary_rows = _multiseed_summary_rows(rows, run_fields[1:])
+    _write_csv(summary_path, ["metric", "mean", "std", "min", "max"], summary_rows)
+    return {"runs": runs_path, "summary": summary_path}
+
+
+def save_algorithm_comparison_from_reports(
+    *,
+    report_dir: Path = REPORT_DIR,
+    output_path: Path = ALGORITHM_COMPARISON_PATH,
+) -> Path:
+    """저장된 DQN 계열 결과 CSV들을 모아 알고리즘 비교표를 만든다."""
+    algorithm_files = {
+        "dqn": report_dir / "baseline_vs_dqn.csv",
+        "double_dqn": report_dir / "double_dqn_vs_baseline.csv",
+        "dueling_dqn": report_dir / "dueling_dqn_vs_baseline.csv",
+    }
+    rows = []
+    baseline_row = None
+    for algorithm_name, path in algorithm_files.items():
+        if not path.exists():
+            continue
+        file_rows = _read_csv_rows(path)
+        if baseline_row is None:
+            baseline_row = _find_row(file_rows, "low-stock")
+        algorithm_row = _find_row(file_rows, algorithm_name)
+        if algorithm_row:
+            rows.append({"algorithm": algorithm_name, **_metric_defaults_str(algorithm_row)})
+    if baseline_row:
+        rows.insert(0, {"algorithm": "low-stock", **_metric_defaults_str(baseline_row)})
+    _write_csv(
+        output_path,
+        [
+            "algorithm",
+            "avg_reward",
+            "avg_unmet_demand",
+            "avg_rejected_returns",
+            "avg_movement_cost",
+            "avg_service_rate",
+            "same_location_rate",
+        ],
+        rows,
+    )
+    return output_path
+
+
 def _metric_defaults(metrics: dict[str, float]) -> dict[str, float]:
     """이전 결과 dict에 없는 metric은 0으로 채워 CSV schema를 안정화한다."""
     return {
@@ -207,6 +272,37 @@ def _metric_defaults(metrics: dict[str, float]) -> dict[str, float]:
         "avg_service_rate": metrics.get("avg_service_rate", 0.0),
         "same_location_rate": metrics.get("same_location_rate", 0.0),
     }
+
+
+def _multiseed_summary_rows(
+    rows: list[dict[str, float]],
+    metrics: list[str],
+) -> list[dict[str, float | str]]:
+    """seed별 결과에서 metric별 평균/표준편차/min/max row를 만든다."""
+    return [
+        {
+            "metric": metric,
+            "mean": _mean([row[metric] for row in rows]),
+            "std": _std([row[metric] for row in rows]),
+            "min": min(row[metric] for row in rows),
+            "max": max(row[metric] for row in rows),
+        }
+        for metric in metrics
+        if rows
+    ]
+
+
+def _mean(values: list[float]) -> float:
+    """숫자 목록의 평균을 반환한다."""
+    return sum(values) / len(values) if values else 0.0
+
+
+def _std(values: list[float]) -> float:
+    """표본 표준편차가 아닌 간단한 population std를 반환한다."""
+    if not values:
+        return 0.0
+    mean = _mean(values)
+    return (sum((value - mean) ** 2 for value in values) / len(values)) ** 0.5
 
 
 def _station_list(env: DdareungiEnv) -> str:
@@ -221,3 +317,26 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]])
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    """CSV 파일을 dict row 목록으로 읽는다."""
+    with path.open("r", encoding="utf-8", newline="") as file:
+        return list(csv.DictReader(file))
+
+
+def _find_row(rows: list[dict[str, str]], name: str) -> dict[str, str] | None:
+    """policy 이름과 일치하는 row를 찾는다."""
+    return next((row for row in rows if row.get("policy") == name), None)
+
+
+def _metric_defaults_str(metrics: dict[str, str]) -> dict[str, float]:
+    """CSV 문자열 metric을 float dict로 변환한다."""
+    return {
+        "avg_reward": float(metrics.get("avg_reward", 0.0)),
+        "avg_unmet_demand": float(metrics.get("avg_unmet_demand", 0.0)),
+        "avg_rejected_returns": float(metrics.get("avg_rejected_returns", 0.0)),
+        "avg_movement_cost": float(metrics.get("avg_movement_cost", 0.0)),
+        "avg_service_rate": float(metrics.get("avg_service_rate", 0.0)),
+        "same_location_rate": float(metrics.get("same_location_rate", 0.0)),
+    }
