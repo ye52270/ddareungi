@@ -39,6 +39,11 @@ def load_env_config(config_path: Path) -> EnvConfig:
         full_penalty=int(payload["reward"]["full_penalty"]),
         move_cost=int(payload["reward"]["move_cost"]),
         initial_truck_bikes=int(payload["truck"]["initial_bikes"]),
+        traffic_enabled=bool(payload.get("traffic", {}).get("enabled", False)),
+        traffic_factors=_parse_traffic_factors(
+            payload.get("traffic", {}),
+            episode_steps=int(payload["simulation"]["episode_steps"]),
+        ),
         demand_ranges=_parse_ranges(sample_payload["demand_ranges"]),
         return_ranges=_parse_ranges(sample_payload["return_ranges"]),
     )
@@ -61,3 +66,42 @@ def _parse_ranges(raw: dict[str, list[list[int]]]) -> dict[int, tuple[tuple[int,
         int(hour): tuple((int(low), int(high)) for low, high in station_ranges)
         for hour, station_ranges in raw.items()
     }
+
+
+def _parse_traffic_factors(raw: dict[str, object], episode_steps: int) -> tuple[float, ...]:
+    """YAML의 시간대별 traffic factor 범위를 episode_steps 길이 tuple로 펼친다."""
+    if not raw.get("enabled", False):
+        return ()
+    factors = [None for _ in range(episode_steps)]
+    raw_factors = raw.get("factors", {})
+    if not isinstance(raw_factors, dict):
+        raise ValueError("traffic.factors must be a mapping such as '8-8': 1.5")
+
+    for hour_range, factor in raw_factors.items():
+        start, end = _parse_hour_range(str(hour_range), episode_steps)
+        factor_value = float(factor)
+        if factor_value <= 0:
+            raise ValueError("traffic factor must be positive")
+        for hour in range(start, end + 1):
+            if factors[hour] is not None:
+                raise ValueError(f"traffic factor for hour {hour} is duplicated")
+            factors[hour] = factor_value
+
+    missing_hours = [hour for hour, factor in enumerate(factors) if factor is None]
+    if missing_hours:
+        raise ValueError(f"traffic.factors missing hours: {missing_hours}")
+    return tuple(float(factor) for factor in factors)
+
+
+def _parse_hour_range(raw_range: str, episode_steps: int) -> tuple[int, int]:
+    """'8-8' 또는 '0-5' 형식의 hour 범위를 시작/끝 hour로 변환한다."""
+    parts = raw_range.split("-")
+    if len(parts) != 2:
+        raise ValueError(f"traffic hour range must look like '8-8': {raw_range}")
+    start, end = int(parts[0]), int(parts[1])
+    if not 0 <= start <= end < episode_steps:
+        raise ValueError(
+            f"traffic hour range must satisfy 0 <= start <= end < {episode_steps}: "
+            f"{raw_range}"
+        )
+    return start, end

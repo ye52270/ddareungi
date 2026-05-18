@@ -34,6 +34,8 @@ def load_profile(path: Path, base: EnvConfig | None = None) -> EnvConfig:
             full_penalty=base_config.full_penalty,
             move_cost=base_config.move_cost,
             initial_truck_bikes=base_config.initial_truck_bikes,
+            traffic_enabled=base_config.traffic_enabled,
+            traffic_factors=base_config.traffic_factors,
             demand_ranges=_ranges_from_daily_counts(daily_demand_counts),
             return_ranges=_ranges_from_daily_counts(daily_return_counts),
             daily_dates=dates,
@@ -52,6 +54,8 @@ def load_profile(path: Path, base: EnvConfig | None = None) -> EnvConfig:
         full_penalty=base_config.full_penalty,
         move_cost=base_config.move_cost,
         initial_truck_bikes=base_config.initial_truck_bikes,
+        traffic_enabled=base_config.traffic_enabled,
+        traffic_factors=base_config.traffic_factors,
         demand_ranges=_ranges(payload["demand_ranges_by_hour"]),
         return_ranges=_ranges(payload["return_ranges_by_hour"]),
     )

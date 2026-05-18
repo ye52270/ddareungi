@@ -37,6 +37,9 @@ class SimpleProjectTest(unittest.TestCase):
         self.assertEqual(config.initial_stock_max, 5)
         self.assertEqual(len(config.demand_ranges), 24)
         self.assertEqual(len(config.return_ranges), 24)
+        self.assertTrue(config.traffic_enabled)
+        self.assertEqual(config.traffic_factors[8], 1.5)
+        self.assertEqual(config.traffic_factors[18], 1.6)
 
     def test_config_rejects_invalid_hourly_ranges(self):
         """EnvConfig가 잘못된 시간대별 샘플 범위를 거부하는지 확인한다."""
@@ -59,6 +62,17 @@ class SimpleProjectTest(unittest.TestCase):
                 initial_stock_max=11,
             )
 
+    def test_config_rejects_invalid_traffic_factors(self):
+        """traffic factor 개수가 episode 길이와 다르면 오류를 내는지 확인한다."""
+        with self.assertRaises(ValueError):
+            EnvConfig(
+                station_names=("A", "B", "C"),
+                demand_ranges={hour: ((0, 1), (0, 1), (0, 1)) for hour in range(24)},
+                return_ranges={hour: ((0, 1), (0, 1), (0, 1)) for hour in range(24)},
+                traffic_enabled=True,
+                traffic_factors=(1.0, 1.5),
+            )
+
     def test_env_runs_one_episode(self):
         """환경이 reset 후 24 step episode를 끝까지 실행하는지 확인한다."""
         env = DdareungiEnv(seed=123)
@@ -74,6 +88,27 @@ class SimpleProjectTest(unittest.TestCase):
         self.assertEqual(steps, 24)
         self.assertEqual(len(observation), env.observation_space.shape[0])
         self.assertIn("unmet_demand", info)
+
+    def test_traffic_factor_adjusts_movement_cost(self):
+        """출퇴근 시간 traffic factor가 트럭 이동비용에 반영되는지 확인한다."""
+        config = EnvConfig(
+            station_names=("A", "B"),
+            demand_ranges={hour: ((0, 0), (0, 0)) for hour in range(24)},
+            return_ranges={hour: ((0, 0), (0, 0)) for hour in range(24)},
+            initial_stock_min=5,
+            initial_stock_max=5,
+            traffic_enabled=True,
+            traffic_factors=tuple(1.5 if hour == 8 else 1.0 for hour in range(24)),
+        )
+        env = DdareungiEnv(config=config, seed=123)
+        env.reset(seed=123)
+        env.time_step = 8
+
+        _, reward, _, _, info = env.step(1)
+
+        self.assertEqual(info["traffic_factor"], 1.5)
+        self.assertEqual(info["movement_cost"], 1.5)
+        self.assertEqual(reward, -1.5)
 
     def test_observation_includes_expected_demand(self):
         """DQN observation에 대여소별 현재 시간대 예상 수요가 포함되는지 확인한다."""

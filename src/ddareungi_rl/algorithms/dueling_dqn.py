@@ -65,7 +65,7 @@ def train_dueling_dqn(
         episode_reward = 0.0
         episode_unmet = 0
         episode_rejected_returns = 0
-        episode_movement_cost = 0
+        episode_movement_cost = 0.0
         episode_losses = []
 
         while not done:
@@ -79,7 +79,7 @@ def train_dueling_dqn(
             episode_reward += reward
             episode_unmet += int(info["unmet_demand"])
             episode_rejected_returns += int(info["rejected_returns"])
-            episode_movement_cost += int(info["movement_cost"])
+            episode_movement_cost += float(info["movement_cost"])
 
             if len(replay) >= config.min_replay:
                 episode_losses.append(

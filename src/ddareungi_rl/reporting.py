@@ -44,6 +44,8 @@ def save_experiment_config(
             "target_stock": env.config.target_stock,
             "profile_path": str(profile_path),
             "daily_profile_dates": len(env.config.daily_dates),
+            "traffic_enabled": env.config.traffic_enabled,
+            "traffic_factors": list(env.config.traffic_factors),
         },
         "mdp": {
             "state": [
@@ -57,7 +59,7 @@ def save_experiment_config(
             "reward": (
                 f"-{env.config.unmet_penalty} * unmet_demand "
                 f"- {env.config.full_penalty} * rejected_returns "
-                f"- {env.config.move_cost} * movement_cost"
+                "- adjusted_movement_cost"
             ),
         },
         "dqn_config": asdict(config),
@@ -78,9 +80,15 @@ def save_mdp_summary(env: DdareungiEnv, output_path: Path = MDP_SUMMARY_PATH) ->
 |---|---|
 | State | station_bikes, expected_demand, truck_location, truck_bikes, time_step |
 | Action | next station index to visit |
-| Reward | -{env.config.unmet_penalty} * unmet_demand - {env.config.full_penalty} * rejected_returns - {env.config.move_cost} * movement_cost |
+| Reward | -{env.config.unmet_penalty} * unmet_demand - {env.config.full_penalty} * rejected_returns - adjusted_movement_cost |
 | Environment | {env.config.station_count} stations, 1 truck, {env.config.episode_steps} steps per day |
 | Goal | reduce stockout and rejected-return events |
+
+## Movement Cost
+
+- Base move cost: {env.config.move_cost}
+- Traffic enabled: {env.config.traffic_enabled}
+- Traffic factors: {list(env.config.traffic_factors) if env.config.traffic_enabled else "disabled"}
 
 ## Stations
 

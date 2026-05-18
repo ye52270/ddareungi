@@ -178,7 +178,7 @@ def evaluate_policy_with_trace(
         served_sum = 0
         unmet_sum = 0
         rejected_return_sum = 0
-        movement_cost_sum = 0
+        movement_cost_sum = 0.0
         episode_same_location_count = 0
         active_date = reset_info.get("active_date") or "-"
         while not done:
@@ -194,7 +194,7 @@ def evaluate_policy_with_trace(
             served_sum += int(info["served_demand"])
             unmet_sum += int(info["unmet_demand"])
             rejected_return_sum += int(info["rejected_returns"])
-            movement_cost_sum += int(info["movement_cost"])
+            movement_cost_sum += float(info["movement_cost"])
             total_steps += 1
             step_rows.append(
                 {
@@ -210,7 +210,7 @@ def evaluate_policy_with_trace(
                     "served_demand": int(info["served_demand"]),
                     "unmet_demand": int(info["unmet_demand"]),
                     "rejected_returns": int(info["rejected_returns"]),
-                    "movement_cost": int(info["movement_cost"]),
+                    "movement_cost": float(info["movement_cost"]),
                     "moved_bikes": int(info["moved_bikes"]),
                     "station_bikes": "|".join(str(value) for value in info["station_bikes"]),
                     "demand": "|".join(str(value) for value in info["demand"]),

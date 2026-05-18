@@ -36,6 +36,8 @@ class EnvConfig:
     full_penalty: int = 3
     move_cost: int = 1
     initial_truck_bikes: int = 3
+    traffic_enabled: bool = False
+    traffic_factors: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         """설정값이 환경의 기본 가정을 만족하는지 미리 검증한다."""
@@ -56,6 +58,8 @@ class EnvConfig:
             raise ValueError("initial_truck_bikes must be between 0 and truck_capacity")
         if self.episode_steps <= 0:
             raise ValueError("episode_steps must be positive")
+        if self.traffic_enabled:
+            _validate_traffic_factors(self.traffic_factors, self.episode_steps)
         _validate_hourly_ranges(
             name="demand_ranges",
             ranges=self.demand_ranges,
@@ -147,7 +151,7 @@ class DdareungiEnv(gym.Env):
         else:
             self.daily_index = 0
             self.active_date = ""
-        info = self._info(reward=0.0, unmet=0, movement_cost=0)
+        info = self._info(reward=0.0, unmet=0, movement_cost=0.0)
         return self._observation(), info
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, object]]:
@@ -156,7 +160,12 @@ class DdareungiEnv(gym.Env):
         if action < 0 or action >= self.config.station_count:
             raise ValueError(f"action must be between 0 and {self.config.station_count - 1}")
 
-        movement_cost = self.config.move_cost if action != self.truck_location else 0
+        traffic_factor = self.traffic_factor()
+        movement_cost = (
+            float(self.config.move_cost) * traffic_factor
+            if action != self.truck_location
+            else 0.0
+        )
 
         # 1. 트럭이 action으로 선택된 대여소로 이동한다.
         self.truck_location = action
@@ -192,6 +201,7 @@ class DdareungiEnv(gym.Env):
             accepted_returns=accepted_returns,
             rejected_returns=rejected_returns,
             moved_bikes=moved_bikes,
+            traffic_factor=traffic_factor,
         )
         return self._observation(), reward, terminated, truncated, info
 
@@ -224,6 +234,13 @@ class DdareungiEnv(gym.Env):
             self.time_step / cfg.episode_steps,
         ]
         return np.array(values, dtype=np.float32)
+
+    def traffic_factor(self) -> float:
+        """현재 시간대의 트럭 이동 혼잡 계수를 반환한다."""
+        if not self.config.traffic_enabled:
+            return 1.0
+        hour = self.time_step % self.config.episode_steps
+        return float(self.config.traffic_factors[hour])
 
     def _rebalance(self, station_id: int) -> int:
         """방문한 대여소를 target_stock에 가깝게 맞추고 이동 수량을 반환한다."""
@@ -297,13 +314,14 @@ class DdareungiEnv(gym.Env):
         self,
         reward: float,
         unmet: int,
-        movement_cost: int,
+        movement_cost: float,
         demand: list[int] | None = None,
         returns: list[int] | None = None,
         served: int = 0,
         accepted_returns: int = 0,
         rejected_returns: int = 0,
         moved_bikes: int = 0,
+        traffic_factor: float = 1.0,
     ) -> dict[str, object]:
         """사람이 결과를 해석하기 위한 보조 정보를 만든다."""
         return {
@@ -322,8 +340,20 @@ class DdareungiEnv(gym.Env):
             "rejected_returns": rejected_returns,
             "movement_cost": movement_cost,
             "moved_bikes": moved_bikes,
+            "traffic_factor": traffic_factor,
             "reward": reward,
         }
+
+
+def _validate_traffic_factors(
+    traffic_factors: tuple[float, ...],
+    episode_steps: int,
+) -> None:
+    """traffic factor가 episode 시간 길이와 양수 조건을 만족하는지 검증한다."""
+    if len(traffic_factors) != episode_steps:
+        raise ValueError("traffic_factors length must match episode_steps")
+    if any(factor <= 0 for factor in traffic_factors):
+        raise ValueError("traffic_factors must be positive")
 
 
 def _validate_hourly_ranges(
