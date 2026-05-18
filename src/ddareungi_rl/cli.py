@@ -175,6 +175,7 @@ def _run_q_algorithm(
     curve_path = _print_dqn_curve_result(
         metrics,
         baseline_results,
+        algorithm_name=algorithm_name,
         output_path=training_curve_path,
         baseline_label="low-stock",
     )
@@ -366,10 +367,11 @@ def _evaluate_baseline_summary(env: DdareungiEnv) -> dict[str, dict[str, float]]
 def _print_dqn_curve_result(
     metrics: list[dict[str, float]],
     baseline_results: dict[str, dict[str, float]],
+    algorithm_name: str = "dqn",
     output_path: Path = Path("outputs/figures/dqn_training_curve.png"),
     baseline_label: str = "low-stock",
 ) -> Path | None:
-    """DQN 학습 곡선 저장 결과를 콘솔에 출력한다."""
+    """DQN 계열 학습 곡선 저장 결과를 콘솔에 출력한다."""
     low_stock_reward = baseline_results.get("low-stock", {}).get("avg_reward")
     try:
         chart_path = save_dqn_training_curve(
@@ -377,13 +379,24 @@ def _print_dqn_curve_result(
             output_path=output_path,
             baseline_reward=low_stock_reward,
             baseline_label=baseline_label,
+            algorithm_label=_algorithm_display_name(algorithm_name),
         )
     except RuntimeError as exc:
         print()
         print(f"DQN 학습 곡선 저장 실패: {exc}")
         return None
-    print(f"dqn_training_curve_saved={chart_path}")
+    print(f"{algorithm_name}_training_curve_saved={chart_path}")
     return chart_path
+
+
+def _algorithm_display_name(algorithm_name: str) -> str:
+    """파일/코드용 알고리즘 이름을 그래프 제목용 표시 이름으로 바꾼다."""
+    names = {
+        "dqn": "DQN",
+        "double_dqn": "Double DQN",
+        "dueling_dqn": "Dueling DQN",
+    }
+    return names.get(algorithm_name, algorithm_name.replace("_", " ").title())
 
 
 def print_profile_help() -> None:

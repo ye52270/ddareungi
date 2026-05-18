@@ -105,15 +105,23 @@ def print_training_progress(
     metrics: list[dict[str, float]],
     log_interval: int,
 ) -> None:
-    """최근 episode 평균 reward와 unmet demand를 콘솔에 출력한다."""
+    """최근 episode 평균 핵심 지표를 한 줄 요약으로 콘솔에 출력한다."""
     recent_metrics = metrics[-log_interval:]
-    recent_reward = float(np.mean([metric["reward"] for metric in recent_metrics]))
-    recent_unmet = float(np.mean([metric["unmet_demand"] for metric in recent_metrics]))
+    window_size = len(recent_metrics)
+    recent_reward = _average_metric(recent_metrics, "reward")
+    recent_unmet = _average_metric(recent_metrics, "unmet_demand")
+    recent_rejected = _average_metric(recent_metrics, "rejected_returns")
+    recent_movement = _average_metric(recent_metrics, "movement_cost")
+    recent_loss = _average_metric(recent_metrics, "loss")
+    progress = _progress_bar(episode, total_episodes)
     print(
-        f"[{label}] episode {episode:03d}/{total_episodes} "
-        f"avg_reward={recent_reward:.2f} "
-        f"avg_unmet={recent_unmet:.2f} "
-        f"epsilon={metrics[-1]['epsilon']:.3f}"
+        f"[{label}] episode {episode:03d}/{total_episodes} {progress} "
+        f"avg{window_size}_reward={recent_reward:.2f} "
+        f"unmet={recent_unmet:.2f} "
+        f"rejected={recent_rejected:.2f} "
+        f"move={recent_movement:.2f} "
+        f"loss={recent_loss:.4f} "
+        f"eps={metrics[-1]['epsilon']:.3f}"
     )
 
 
@@ -264,3 +272,18 @@ def _evaluation_daily_index(episode: int, episode_count: int, day_count: int) ->
     if episode_count <= 1:
         return 0
     return round(episode * (day_count - 1) / (episode_count - 1))
+
+
+def _average_metric(metrics: list[dict[str, float]], key: str) -> float:
+    """metric list에서 특정 key의 평균을 안전하게 계산한다."""
+    if not metrics:
+        return 0.0
+    return float(np.mean([metric.get(key, 0.0) for metric in metrics]))
+
+
+def _progress_bar(current: int, total: int, width: int = 12) -> str:
+    """현재 episode 진행률을 ASCII progress bar로 만든다."""
+    if total <= 0:
+        return "[" + "-" * width + "]"
+    filled = min(width, max(0, round(width * current / total)))
+    return "[" + "#" * filled + "-" * (width - filled) + "]"

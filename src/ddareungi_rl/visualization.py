@@ -54,8 +54,9 @@ def save_dqn_training_curve(
     output_path: Path = DQN_TRAINING_CHART_PATH,
     baseline_reward: float | None = None,
     baseline_label: str = "low-stock baseline",
+    algorithm_label: str = "DQN",
 ) -> Path:
-    """DQN episode별 reward와 unmet demand를 report 친화적인 학습 곡선으로 저장한다."""
+    """DQN episode별 reward, 실패 지표, 이동비용, loss 학습 곡선을 저장한다."""
     try:
         import matplotlib.pyplot as plt
     except ModuleNotFoundError as exc:
@@ -67,60 +68,105 @@ def save_dqn_training_curve(
     _configure_korean_font(plt)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     episodes = [metric["episode"] for metric in metrics]
-    rewards = [metric["reward"] for metric in metrics]
-    unmet_values = [metric["unmet_demand"] for metric in metrics]
+    rewards = _metric_values(metrics, "reward")
+    unmet_values = _metric_values(metrics, "unmet_demand")
+    rejected_values = _metric_values(metrics, "rejected_returns")
+    movement_values = _metric_values(metrics, "movement_cost")
+    loss_values = _metric_values(metrics, "loss")
     reward_average = _moving_average(rewards)
     unmet_average = _moving_average(unmet_values)
+    rejected_average = _moving_average(rejected_values)
+    movement_average = _moving_average(movement_values)
+    loss_average = _moving_average(loss_values)
     best_reward_average = _best_so_far(reward_average)
     recent_reward = _recent_average(rewards)
     recent_unmet = _recent_average(unmet_values)
+    recent_rejected = _recent_average(rejected_values)
+    recent_movement = _recent_average(movement_values)
 
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-    fig.suptitle("DQN 학습 추세: 평균 보상이 baseline을 넘는가?", fontsize=15, fontweight="bold")
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9), sharex=True)
+    fig.suptitle(f"{algorithm_label} 학습 추세: 보상은 위로, 실패 지표는 아래로", fontsize=15, fontweight="bold")
 
-    axes[0].plot(episodes, rewards, color="#a9b4c2", linewidth=0.8, alpha=0.35, label="episode 보상")
-    axes[0].plot(episodes, reward_average, color="#f2994a", linewidth=2.2, label="최근 20 episode 평균")
-    axes[0].plot(episodes, best_reward_average, color="#2f80ed", linewidth=2, label="최고 이동평균")
+    reward_axis = axes[0, 0]
+    reward_axis.plot(episodes, rewards, color="#a9b4c2", linewidth=0.8, alpha=0.35, label="episode 보상")
+    reward_axis.plot(episodes, reward_average, color="#f2994a", linewidth=2.2, label="최근 20 episode 평균")
+    reward_axis.plot(episodes, best_reward_average, color="#2f80ed", linewidth=2, label="최고 이동평균")
     if baseline_reward is not None:
-        axes[0].axhline(
+        reward_axis.axhline(
             baseline_reward,
             color="#27ae60",
             linestyle="--",
             linewidth=2,
             label=f"{baseline_label} 평균 보상",
         )
-        axes[0].fill_between(
+        reward_axis.fill_between(
             episodes,
             baseline_reward,
             max(max(best_reward_average), baseline_reward),
             color="#27ae60",
             alpha=0.08,
         )
-    axes[0].set_title("보상 추세")
-    axes[0].set_ylabel("보상")
-    axes[0].grid(alpha=0.25)
-    axes[0].legend()
-    axes[0].text(
+    reward_axis.set_title("운영 보상 추세")
+    reward_axis.set_ylabel("보상")
+    reward_axis.grid(alpha=0.25)
+    reward_axis.legend()
+    reward_axis.text(
         0.01,
         0.04,
         f"위로 갈수록 좋음 | 최근 100 episode 평균: {recent_reward:.2f}",
-        transform=axes[0].transAxes,
+        transform=reward_axis.transAxes,
         fontsize=10,
         bbox={"facecolor": "white", "alpha": 0.82, "edgecolor": "#d0d7de"},
     )
 
-    axes[1].plot(episodes, unmet_values, color="#a9b4c2", linewidth=0.8, alpha=0.35, label="episode 미충족")
-    axes[1].plot(episodes, unmet_average, color="#eb5757", linewidth=2.2, label="최근 20 episode 평균")
-    axes[1].set_title("헛걸음 감소 추세")
-    axes[1].set_xlabel("Episode")
-    axes[1].set_ylabel("건수")
-    axes[1].grid(alpha=0.25)
-    axes[1].legend()
-    axes[1].text(
+    unmet_axis = axes[0, 1]
+    unmet_axis.plot(episodes, unmet_values, color="#f4b6b6", linewidth=0.8, alpha=0.45, label="episode 미충족")
+    unmet_axis.plot(episodes, unmet_average, color="#eb5757", linewidth=2.2, label="최근 20 episode 평균")
+    unmet_axis.set_title("헛걸음 감소 추세")
+    unmet_axis.set_ylabel("건수")
+    unmet_axis.grid(alpha=0.25)
+    unmet_axis.legend()
+    unmet_axis.text(
+        0.01,
+        0.04,
+        f"아래로 갈수록 좋음 | 최근 100 episode 평균: {recent_unmet:.2f}건",
+        transform=unmet_axis.transAxes,
+        fontsize=10,
+        bbox={"facecolor": "white", "alpha": 0.82, "edgecolor": "#d0d7de"},
+    )
+
+    rejected_axis = axes[1, 0]
+    rejected_axis.plot(episodes, rejected_values, color="#f8cfa1", linewidth=0.8, alpha=0.45, label="episode 반납 실패")
+    rejected_axis.plot(episodes, rejected_average, color="#f2994a", linewidth=2.2, label="최근 20 episode 평균")
+    rejected_axis.set_title("반납 실패 감소 추세")
+    rejected_axis.set_xlabel("Episode")
+    rejected_axis.set_ylabel("건수")
+    rejected_axis.grid(alpha=0.25)
+    rejected_axis.legend()
+    rejected_axis.text(
         0.01,
         0.86,
-        f"아래로 갈수록 좋음 | 최근 100 episode 평균: {recent_unmet:.2f}건",
-        transform=axes[1].transAxes,
+        f"아래로 갈수록 좋음 | 최근 100 episode 평균: {recent_rejected:.2f}건",
+        transform=rejected_axis.transAxes,
+        fontsize=10,
+        bbox={"facecolor": "white", "alpha": 0.82, "edgecolor": "#d0d7de"},
+    )
+
+    cost_axis = axes[1, 1]
+    cost_axis.plot(episodes, movement_values, color="#b8c4d2", linewidth=0.8, alpha=0.45, label="episode 이동비용")
+    cost_axis.plot(episodes, movement_average, color="#2f80ed", linewidth=2.2, label="이동비용 평균")
+    if any(loss_values):
+        cost_axis.plot(episodes, loss_average, color="#9b51e0", linewidth=1.8, alpha=0.9, label="loss 평균")
+    cost_axis.set_title("이동비용과 학습 loss")
+    cost_axis.set_xlabel("Episode")
+    cost_axis.set_ylabel("값")
+    cost_axis.grid(alpha=0.25)
+    cost_axis.legend()
+    cost_axis.text(
+        0.01,
+        0.86,
+        f"이동은 적을수록 좋음 | 최근 100 episode 평균: {recent_movement:.2f}",
+        transform=cost_axis.transAxes,
         fontsize=10,
         bbox={"facecolor": "white", "alpha": 0.82, "edgecolor": "#d0d7de"},
     )
@@ -237,6 +283,11 @@ def _moving_average(values: list[float], window_size: int = 20) -> list[float]:
         window = values[max(0, index - window_size + 1): index + 1]
         averages.append(sum(window) / len(window))
     return averages
+
+
+def _metric_values(metrics: list[dict[str, float]], key: str) -> list[float]:
+    """학습 metric list에서 특정 key 값을 float list로 추출한다."""
+    return [float(metric.get(key, 0.0)) for metric in metrics]
 
 
 def _best_so_far(values: list[float]) -> list[float]:
