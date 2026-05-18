@@ -117,6 +117,20 @@ reward =
 
 현재 결과만 보면 DQN은 `low-stock` baseline과 미충족 수요는 비슷하지만, **반납 실패를 더 적게 만들면서 reward가 가장 좋게 나왔다.**
 
+### 결과 그래프
+
+**Baseline 정책 비교**
+
+![Baseline comparison](docs/images/baseline_comparison.png)
+
+**DQN 학습 곡선**
+
+![DQN training curve](docs/images/dqn_training_curve.png)
+
+**DQN vs baseline 비교**
+
+![DQN vs baseline comparison](docs/images/dqn_vs_baseline_comparison.png)
+
 실행 후 생성되는 주요 그래프는 다음 위치에 저장된다.
 
 | 산출물 | 파일 |
