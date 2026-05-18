@@ -35,11 +35,8 @@ class GreedyQPolicy:
     def act(self, env: DdareungiEnv) -> int:
         """현재 observation에서 Q value가 가장 큰 action을 반환한다."""
         state = torch.tensor(env._observation(), dtype=torch.float32).unsqueeze(0)
-        with torch.no_grad():
+        with torch.inference_mode():
             return int(torch.argmax(self.network(state), dim=1).item())
-
-
-DQNPolicy = GreedyQPolicy
 
 
 @dataclass
@@ -258,11 +255,6 @@ def save_model(policy: GreedyQPolicy, path: Path) -> None:
     """학습된 Q-policy의 network weight를 저장한다."""
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(policy.network.state_dict(), path)
-
-
-def _should_log_training(episode: int, total_episodes: int, log_interval: int) -> bool:
-    """학습 진행 상황을 출력할 episode인지 판단한다."""
-    return episode == 1 or episode == total_episodes or episode % log_interval == 0
 
 
 def _evaluation_daily_index(episode: int, episode_count: int, day_count: int) -> int:

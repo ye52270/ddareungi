@@ -9,7 +9,7 @@ The goal is not to build a large RL platform yet. The goal is to keep a small Dd
 Core learning flow:
 
 ```text
-Environment -> Baselines -> DQN -> Evaluation
+Environment -> Baselines -> DQN variants -> Evaluation
 ```
 
 Keep only what directly helps explain:
@@ -28,19 +28,20 @@ src/ddareungi_rl/
   env.py           # MDP environment
   config_loader.py # YAML/JSON config loader
   baselines.py     # Random, Low-stock, Demand-aware
-  dqn.py           # PyTorch DQN training and evaluation
+  dqn.py           # Backward-compatible DQN API re-export
+  algorithms/      # DQN, Double DQN, Dueling DQN implementations
   data_profile.py  # Optional real-data profile loader
   cli.py           # Small menu
 ```
 
-Avoid reintroducing subpackages until the user clearly understands this version.
+Keep subpackages limited to algorithm code only. Do not add new layers unless they make the learning flow easier to explain.
 
 ## Coding Rules
 
 - Keep code readable over clever.
 - Every Python function and method should have a concise docstring.
 - Prefer one clear function over several small abstractions when teaching value is higher.
-- Do not add visualization, advanced DQN variants, PPO, notebooks, PPT generation, or large data pipelines unless the user explicitly asks.
+- Do not add PPO, notebooks, PPT generation, or large data pipelines unless the user explicitly asks.
 - Keep real data optional. It should only replace demand/return patterns, not change the MDP story.
 - Keep comments and documentation in Korean unless code identifiers or standard RL terms are clearer in English.
 

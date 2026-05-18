@@ -58,7 +58,7 @@ def make_env() -> DdareungiEnv:
     profile_path = current_profile_path()
     if not profile_path.exists():
         raise FileNotFoundError(
-            "real-data profile이 없습니다. 메뉴 3번을 눌러 생성 명령을 확인하세요."
+            "real-data profile이 없습니다. 데이터 profile 상태/생성 안내 메뉴를 확인하세요."
         )
     config = load_profile(profile_path)
     return DdareungiEnv(config=config, seed=42)
@@ -419,11 +419,9 @@ def print_menu() -> None:
     print("2. DQN 학습/평가")
     print("3. Double DQN 학습/평가")
     print("4. Dueling DQN 학습/평가")
-    print("5. Policy Gradient 학습/평가 (준비 중)")
-    print("6. PPO 학습/평가 (준비 중)")
-    print("7. 데이터 profile 상태/생성 안내")
-    print("8. DQN multi-seed 평가")
-    print("9. 알고리즘 결과 비교")
+    print("5. 데이터 profile 상태/생성 안내")
+    print("6. DQN multi-seed 평가")
+    print("7. 알고리즘 결과 비교")
     print("0. 종료")
 
 
@@ -441,14 +439,10 @@ def main() -> None:
         elif choice == "4":
             run_dueling_training()
         elif choice == "5":
-            print("Policy Gradient는 다음 단계에서 구현할 예정입니다.")
-        elif choice == "6":
-            print("PPO는 다음 단계에서 구현할 예정입니다.")
-        elif choice == "7":
             print_profile_help()
-        elif choice == "8":
+        elif choice == "6":
             run_multiseed_training()
-        elif choice == "9":
+        elif choice == "7":
             run_algorithm_comparison()
         elif choice == "0":
             print("종료합니다.")

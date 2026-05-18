@@ -164,11 +164,15 @@ ddareungi
 ```text
 1. Baseline 평가
 2. DQN 학습/평가
-3. 데이터 profile 상태/생성 안내
+3. Double DQN 학습/평가
+4. Dueling DQN 학습/평가
+5. 데이터 profile 상태/생성 안내
+6. DQN multi-seed 평가
+7. 알고리즘 결과 비교
 0. 종료
 ```
 
-`1`, `2`번은 `outputs/data/magok_3station_daily_profile.json`을 우선 사용한다. 이 파일이 없으면 `outputs/data/magok_3station_profile.json`을 사용한다. 둘 다 없으면 메뉴 `3`번에서 profile 생성 명령을 확인한다.
+학습/평가 메뉴는 `outputs/data/magok_3station_daily_profile.json`을 우선 사용한다. 이 파일이 없으면 `outputs/data/magok_3station_profile.json`을 사용한다. 둘 다 없으면 메뉴 `5`번에서 profile 생성 명령을 확인한다.
 
 ---
 
@@ -214,12 +218,20 @@ src/ddareungi_rl/
   env.py             # MDP 환경
   config_loader.py   # YAML/JSON 설정 로더
   baselines.py       # no-op, random, low-stock, demand-aware 정책
-  dqn.py             # PyTorch DQN 학습/평가
+  dqn.py             # 기존 import 호환용 DQN API
   data_profile.py    # 실제 데이터 profile 읽기
   profile_builder.py # 공공데이터 CSV에서 profile 생성
   visualization.py   # 실험 결과 그래프 저장
   experiment_log.py  # DQN parameter/result log 저장
+  dashboard.py       # 실험 결과 HTML dashboard 생성
   cli.py             # 실행 메뉴
+
+src/ddareungi_rl/algorithms/
+  common.py          # 공통 config, policy, 평가 helper
+  dqn.py             # 기본 DQN 학습 코드
+  double_dqn.py      # Double DQN 학습 코드
+  dueling_dqn.py     # Dueling DQN 학습 코드
+  networks.py        # QNetwork, DuelingQNetwork
 
 config/
   default_env.yaml   # 환경 크기, 초기 재고, reward 계수, 기본 sample path
@@ -255,7 +267,7 @@ sample_data/
 |---|---|---|
 | v0 | 마곡 3개 대여소 daily profile 연결 | 진행 중 |
 | v1 | baseline vs DQN 결과 안정화 | 진행 중 |
-| v2 | seed별 평균/표준편차 평가 추가 | 예정 |
-| v3 | action distribution, 대표 episode 분석 추가 | 예정 |
-| v4 | Double DQN, Dueling DQN 비교 | 예정 |
+| v2 | seed별 평균/표준편차 평가 추가 | 진행 중 |
+| v3 | action distribution, 대표 episode 분석 추가 | 진행 중 |
+| v4 | Double DQN, Dueling DQN 비교 | 진행 중 |
 | v5 | 더 큰 권역과 실제 거리 기반 이동 비용 적용 | 예정 |
