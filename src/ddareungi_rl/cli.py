@@ -298,6 +298,7 @@ def _save_report_outputs(
         action_chart = save_action_distribution_chart(
             dqn_report["action_counts"],  # type: ignore[index]
             list(env.config.station_names),
+            output_path=Path(f"outputs/figures/{algorithm_name}_action_distribution.png"),
         )
     except RuntimeError as exc:
         print(f"action 분포 그래프 저장 실패: {exc}")
@@ -313,6 +314,8 @@ def _save_report_outputs(
         algorithm_name=algorithm_name,
         comparison_path=comparison_csv_path,
         training_history_path=training_history_path,
+        action_distribution_path=trace_paths["action_distribution"],
+        evaluation_episodes_path=trace_paths["evaluation_episodes"],
     )
     print(f"dashboard_saved={dashboard_path}")
 

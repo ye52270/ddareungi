@@ -28,9 +28,19 @@ def save_experiment_dashboard(
     config = _read_json(report_dir / "experiment_config.json")
     comparison_rows = _read_csv(comparison_path or report_dir / "baseline_vs_dqn.csv")
     algorithm_rows = _read_csv(report_dir / "algorithm_comparison.csv")
-    action_rows = _read_csv(action_distribution_path or report_dir / "action_distribution.csv")
+    action_distribution_csv = action_distribution_path or _preferred_report_path(
+        report_dir,
+        f"{algorithm_name}_action_distribution.csv",
+        "action_distribution.csv",
+    )
+    evaluation_episodes_csv = evaluation_episodes_path or _preferred_report_path(
+        report_dir,
+        f"{algorithm_name}_evaluation_episodes.csv",
+        "dqn_evaluation_episodes.csv",
+    )
+    action_rows = _read_csv(action_distribution_csv)
     history_rows = _read_csv(training_history_path or report_dir / "dqn_training_history.csv")
-    episode_rows = _read_csv(evaluation_episodes_path or report_dir / "dqn_evaluation_episodes.csv")
+    episode_rows = _read_csv(evaluation_episodes_csv)
     best_policy = _best_policy(comparison_rows)
     algorithm_row = _find_policy(comparison_rows, algorithm_name)
     low_stock_row = _find_policy(comparison_rows, "low-stock")
@@ -49,6 +59,16 @@ def save_experiment_dashboard(
             algorithm_row=algorithm_row,
             interpretation=interpretation,
             figure_dir=figure_dir,
+            action_distribution_figure_path=_preferred_figure_path(
+                figure_dir,
+                f"{algorithm_name}_action_distribution.png",
+                "action_distribution.png",
+            ),
+            step_trace_path=_preferred_report_path(
+                report_dir,
+                f"{algorithm_name}_step_trace.csv",
+                "dqn_step_trace.csv",
+            ),
         ),
         encoding="utf-8",
     )
@@ -68,6 +88,8 @@ def _render_html(
     algorithm_row: dict[str, str],
     interpretation: str,
     figure_dir: Path,
+    action_distribution_figure_path: Path,
+    step_trace_path: Path,
 ) -> str:
     """dashboard HTML 문자열을 만든다."""
     environment = config.get("environment", {})
@@ -222,7 +244,7 @@ def _render_html(
   <section class="section grid two">
     {_figure(f"Baseline vs {display_name} 비교", _comparison_figure_path(figure_dir, algorithm_name))}
     {_figure(f"{display_name} 학습 곡선", _training_figure_path(figure_dir, algorithm_name))}
-    {_figure(f"{display_name} Action Distribution", figure_dir / "action_distribution.png")}
+    {_figure(f"{display_name} Action Distribution", action_distribution_figure_path)}
     {_figure("Baseline 정책 비교", figure_dir / "baseline_comparison.png")}
   </section>
 
@@ -234,13 +256,29 @@ def _render_html(
     <div class="card">
       <h2>{_escape(display_name)} 평가 Episode 미리보기</h2>
       {_table(episode_rows[:10], ["episode", "date", "reward", "unmet_demand", "rejected_returns", "service_rate"])}
-      <p class="muted">전체 trace는 <code>outputs/reports/dqn_step_trace.csv</code>에서 확인한다.</p>
+      <p class="muted">전체 trace는 <code>{_escape(step_trace_path)}</code>에서 확인한다.</p>
     </div>
   </section>
 </main>
 </body>
 </html>
 """
+
+
+def _preferred_report_path(report_dir: Path, preferred_name: str, legacy_name: str) -> Path:
+    """알고리즘별 report가 있으면 우선 사용하고, 없으면 기존 파일명으로 fallback한다."""
+    preferred_path = report_dir / preferred_name
+    if preferred_path.exists():
+        return preferred_path
+    return report_dir / legacy_name
+
+
+def _preferred_figure_path(figure_dir: Path, preferred_name: str, legacy_name: str) -> Path:
+    """알고리즘별 figure가 있으면 우선 사용하고, 없으면 기존 파일명으로 fallback한다."""
+    preferred_path = figure_dir / preferred_name
+    if preferred_path.exists():
+        return preferred_path
+    return figure_dir / legacy_name
 
 
 def _algorithm_comparison_section(rows: list[dict[str, str]], image_path: Path) -> str:

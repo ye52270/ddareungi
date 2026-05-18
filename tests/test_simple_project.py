@@ -20,6 +20,7 @@ from ddareungi_rl.reporting import (
     save_algorithm_comparison_from_reports,
     save_baseline_vs_dqn_csv,
     save_multiseed_reports,
+    save_policy_trace_reports,
     save_training_history_csv,
 )
 
@@ -451,6 +452,62 @@ class SimpleProjectTest(unittest.TestCase):
             self.assertIn("low-stock,-3.0", text)
             self.assertIn("dqn,-2.0", text)
             self.assertIn("double_dqn,-1.5", text)
+
+    def test_policy_trace_reports_are_algorithm_specific(self):
+        """알고리즘별 평가 trace가 서로 덮어쓰지 않는 파일명으로 저장되는지 확인한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            report = {
+                "action_counts": {0: 2, 1: 1},
+                "episodes": [
+                    {
+                        "policy": "double_dqn",
+                        "episode": 1,
+                        "date": "2025-01-01",
+                        "reward": -1.0,
+                        "served_demand": 10,
+                        "unmet_demand": 0,
+                        "rejected_returns": 0,
+                        "movement_cost": 1,
+                        "service_rate": 1.0,
+                        "same_location_steps": 1,
+                    }
+                ],
+                "steps": [
+                    {
+                        "policy": "double_dqn",
+                        "episode": 1,
+                        "date": "2025-01-01",
+                        "time_step": 1,
+                        "action": 0,
+                        "previous_truck_location": 0,
+                        "truck_location": 0,
+                        "truck_bikes": 5,
+                        "reward": -1.0,
+                        "served_demand": 10,
+                        "unmet_demand": 0,
+                        "rejected_returns": 0,
+                        "movement_cost": 1,
+                        "moved_bikes": 0,
+                        "station_bikes": "5|5",
+                        "demand": "1|0",
+                        "returns": "0|0",
+                    }
+                ],
+            }
+
+            paths = save_policy_trace_reports(
+                policy_name="double_dqn",
+                station_names=["A", "B"],
+                evaluation_report=report,
+                report_dir=root,
+            )
+
+            self.assertEqual(paths["action_distribution"].name, "double_dqn_action_distribution.csv")
+            self.assertEqual(paths["evaluation_episodes"].name, "double_dqn_evaluation_episodes.csv")
+            self.assertEqual(paths["step_trace"].name, "double_dqn_step_trace.csv")
+            self.assertTrue(paths["action_distribution"].exists())
+            self.assertFalse((root / "action_distribution.csv").exists())
 
     def test_profile_builder_creates_real_data_profile(self):
         """작은 CSV 샘플에서 real-profile JSON을 만들고 환경 설정으로 읽는다."""

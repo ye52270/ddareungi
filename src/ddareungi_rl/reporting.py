@@ -139,6 +139,9 @@ def save_policy_trace_reports(
 ) -> dict[str, Path]:
     """DQN 평가의 action 분포, episode 결과, step trace를 CSV로 저장한다."""
     report_dir.mkdir(parents=True, exist_ok=True)
+    action_distribution_path = report_dir / f"{policy_name}_action_distribution.csv"
+    evaluation_episodes_path = report_dir / f"{policy_name}_evaluation_episodes.csv"
+    step_trace_path = report_dir / f"{policy_name}_step_trace.csv"
     action_rows = [
         {
             "policy": policy_name,
@@ -150,12 +153,12 @@ def save_policy_trace_reports(
         for action, count in evaluation_report["action_counts"].items()
     ]
     _write_csv(
-        ACTION_DISTRIBUTION_PATH,
+        action_distribution_path,
         ["policy", "action", "station_name", "count", "ratio"],
         action_rows,
     )
     _write_csv(
-        DQN_EVALUATION_EPISODES_PATH,
+        evaluation_episodes_path,
         [
             "policy",
             "episode",
@@ -171,7 +174,7 @@ def save_policy_trace_reports(
         evaluation_report["episodes"],
     )
     _write_csv(
-        DQN_STEP_TRACE_PATH,
+        step_trace_path,
         [
             "policy",
             "episode",
@@ -194,9 +197,9 @@ def save_policy_trace_reports(
         evaluation_report["steps"],
     )
     return {
-        "action_distribution": ACTION_DISTRIBUTION_PATH,
-        "evaluation_episodes": DQN_EVALUATION_EPISODES_PATH,
-        "step_trace": DQN_STEP_TRACE_PATH,
+        "action_distribution": action_distribution_path,
+        "evaluation_episodes": evaluation_episodes_path,
+        "step_trace": step_trace_path,
     }
 
 
