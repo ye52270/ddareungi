@@ -26,6 +26,7 @@ Keep only what directly helps explain:
 ```text
 src/ddareungi_rl/
   env.py           # MDP environment
+  config_loader.py # YAML/JSON config loader
   baselines.py     # Random, Low-stock, Demand-aware
   dqn.py           # PyTorch DQN training and evaluation
   data_profile.py  # Optional real-data profile loader
@@ -47,7 +48,7 @@ Avoid reintroducing subpackages until the user clearly understands this version.
 
 - State must stay visible and explainable.
 - Action must stay simple: choose the next station to visit.
-- Reward must stay explicit: `-10 * unmet_demand - movement_cost`.
+- Reward must stay explicit: `-10 * unmet_demand - 3 * rejected_returns - movement_cost`.
 - DQN performance claims require baseline comparison.
 - Training reward is not enough; use evaluation episodes.
 

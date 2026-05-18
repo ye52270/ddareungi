@@ -21,6 +21,8 @@ def load_profile(path: Path, base: EnvConfig | None = None) -> EnvConfig:
     return EnvConfig(
         station_names=tuple(str(station["name"]) for station in stations),
         station_capacity=base_config.station_capacity,
+        initial_stock_min=base_config.initial_stock_min,
+        initial_stock_max=base_config.initial_stock_max,
         truck_capacity=base_config.truck_capacity,
         target_stock=base_config.target_stock,
         episode_steps=base_config.episode_steps,

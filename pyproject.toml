@@ -13,6 +13,7 @@ dependencies = [
     "numpy>=1.26",
     "pyyaml>=6.0",
     "torch>=2.0",
+    "tqdm>=4.66",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,7 @@ dev = [
 
 [project.scripts]
 ddareungi = "ddareungi_rl.cli:main"
+ddareungi-build-profile = "ddareungi_rl.profile_builder:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

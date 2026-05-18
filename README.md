@@ -35,14 +35,15 @@
 ```text
 src/ddareungi_rl/
   env.py           # MDP 환경
-  config_loader.py # JSON 설정 로더
+  config_loader.py # YAML/JSON 설정 로더
   baselines.py     # no-op, random, low-stock, demand-aware
   dqn.py           # PyTorch DQN
   data_profile.py  # 실제 데이터 profile 읽기
+  profile_builder.py # 공공데이터 CSV에서 profile 생성
   cli.py           # 실행 메뉴
 
 config/
-  default_env.yaml # 환경 크기, reward 계수, 기본 sample data 경로
+  default_env.yaml # 환경 크기, 초기 재고 범위, reward 계수, 기본 sample data 경로
 
 sample_data/
   toy_demand_return.json # 시간대별 대여/반납 샘플 범위
@@ -50,7 +51,7 @@ sample_data/
 
 시각화, PPT, 여러 DQN 변형, 복잡한 데이터 전처리 코드는 일단 제거했다. 필요하면 나중에 하나씩 다시 붙인다.
 
-환경 코드와 실험 조건은 분리했다. `env.py`는 MDP 동작만 담당하고, 대여소 이름/트럭 용량/reward 계수/시간대별 수요 샘플은 `config/`와 `sample_data/`에서 읽는다.
+환경 코드와 실험 조건은 분리했다. `env.py`는 MDP 동작만 담당하고, 대여소 이름/초기 재고 범위/트럭 용량/reward 계수/시간대별 수요 샘플은 `config/`와 `sample_data/`에서 읽는다.
 
 ## 실행
 
@@ -77,6 +78,25 @@ ddareungi
 ```
 
 `3`, `4`번은 `outputs/data/magok_3station_profile.json`이 있을 때 실제 따릉이 profile을 사용한다. 파일이 없으면 기본 toy 환경으로 실행된다.
+
+## 실제 데이터 profile 만들기
+
+대용량 공공데이터 CSV는 학습 때마다 직접 읽지 않는다. 먼저 1월~12월 대여이력 CSV를 시간대별 profile JSON으로 전처리한 뒤, 메뉴의 `3`, `4`번에서 사용한다.
+
+예시:
+
+```bash
+ddareungi-build-profile \
+  --rental-dir "data/서울특별시 공공자전거 대여이력 정보_2025" \
+  --master-csv "data/서울시 공공자전거 따릉이 대여소 마스터 정보.csv" \
+  --station-keyword "마곡" \
+  --station-count 3 \
+  --output outputs/data/magok_3station_profile.json
+```
+
+이 명령은 `tqdm` 진행률을 보여주면서 CSV를 줄 단위로 읽는다. 결과 JSON에는 선택된 대여소, 시간대별 대여 수요 범위, 시간대별 반납 범위, 사용한 날짜 수와 scale 정보가 저장된다.
+
+공공데이터의 실제 건수는 현재 toy 환경의 대여소 용량보다 훨씬 클 수 있다. 그래서 기본값은 실제 시간대 패턴을 유지하되 `max_sample_high=5` 안에 들어오도록 자동 축소한다. 필요하면 `--scale` 또는 `--max-sample-high`로 조정한다.
 
 ## 지금 버전의 의도
 

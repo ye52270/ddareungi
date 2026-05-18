@@ -21,12 +21,17 @@ def load_default_config() -> EnvConfig:
 
 def load_env_config(config_path: Path) -> EnvConfig:
     """환경 YAML 설정과 연결된 sample_data를 EnvConfig로 변환한다."""
+    # YAML은 실험 조건을, JSON은 시간대별 수요/반납 샘플 범위를 담당한다.
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     sample_path = _resolve_path(config_path, payload["simulation"]["sample_data"])
     sample_payload = json.loads(sample_path.read_text(encoding="utf-8"))
+
+    # EnvConfig 생성 시 __post_init__ 검증이 함께 실행된다.
     return EnvConfig(
         station_names=tuple(payload["station"]["names"]),
         station_capacity=int(payload["station"]["capacity"]),
+        initial_stock_min=int(payload["station"]["initial_stock_min"]),
+        initial_stock_max=int(payload["station"]["initial_stock_max"]),
         truck_capacity=int(payload["truck"]["capacity"]),
         target_stock=int(payload["simulation"]["target_stock"]),
         episode_steps=int(payload["simulation"]["episode_steps"]),

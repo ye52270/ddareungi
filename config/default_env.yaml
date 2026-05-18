@@ -1,22 +1,35 @@
 # 따릉이 RL Simple - 기본 환경 설정
 
 station:
+  # 학습 예제에서 사용할 대여소 이름이다. 이 개수가 action 개수와 state 일부를 결정한다.
   names:
     - "마곡나루역"
     - "LG사옥"
     - "마곡수명산"
+  # 한 대여소가 보관할 수 있는 최대 자전거 수이다.
   capacity: 10
+  # episode reset 시 각 대여소의 초기 자전거 수를 이 범위에서 샘플링한다.
+  initial_stock_min: 2
+  initial_stock_max: 8
 
 truck:
+  # 트럭이 한 번에 싣고 다닐 수 있는 최대 자전거 수이다.
   capacity: 5
+  # episode 시작 시 트럭에 실려 있는 자전거 수이다.
   initial_bikes: 3
 
 simulation:
+  # 하루를 24개 시간 step으로 단순화한다.
   episode_steps: 24
+  # 트럭이 방문한 대여소를 맞추려고 하는 목표 재고량이다.
   target_stock: 5
+  # 시간대별 수요/반납 범위가 들어 있는 샘플 데이터 파일이다.
   sample_data: "sample_data/toy_demand_return.json"
 
 reward:
+  # 자전거가 없어 빌리지 못한 수요 1건당 벌점이다.
   unmet_penalty: 10
+  # 대여소가 가득 차 반납을 받지 못한 1건당 벌점이다.
   full_penalty: 3
+  # 트럭이 다른 대여소로 이동할 때 드는 비용이다.
   move_cost: 1

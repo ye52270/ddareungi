@@ -14,10 +14,15 @@ from gymnasium import spaces
 class EnvConfig:
     """환경의 크기, 보상, 수요 패턴을 보관한다."""
 
+    # station_names 개수가 action 개수이며, observation의 재고 값 개수이기도 하다.
     station_names: tuple[str, ...]
+    # 각 hour마다 대여소별 대여 수요 샘플링 범위를 저장한다.
     demand_ranges: dict[int, tuple[tuple[int, int], ...]]
+    # 각 hour마다 대여소별 반납 수량 샘플링 범위를 저장한다.
     return_ranges: dict[int, tuple[tuple[int, int], ...]]
     station_capacity: int = 10
+    initial_stock_min: int = 2
+    initial_stock_max: int = 8
     truck_capacity: int = 5
     target_stock: int = 5
     episode_steps: int = 24
@@ -25,6 +30,38 @@ class EnvConfig:
     full_penalty: int = 3
     move_cost: int = 1
     initial_truck_bikes: int = 3
+
+    def __post_init__(self) -> None:
+        """설정값이 환경의 기본 가정을 만족하는지 미리 검증한다."""
+        if not self.station_names:
+            raise ValueError("station_names must not be empty")
+        if self.station_capacity <= 0:
+            raise ValueError("station_capacity must be positive")
+        if self.truck_capacity < 0:
+            raise ValueError("truck_capacity must be zero or positive")
+        if not 0 <= self.initial_stock_min <= self.initial_stock_max <= self.station_capacity:
+            raise ValueError(
+                "initial stock range must satisfy "
+                "0 <= initial_stock_min <= initial_stock_max <= station_capacity"
+            )
+        if not 0 <= self.target_stock <= self.station_capacity:
+            raise ValueError("target_stock must be between 0 and station_capacity")
+        if not 0 <= self.initial_truck_bikes <= self.truck_capacity:
+            raise ValueError("initial_truck_bikes must be between 0 and truck_capacity")
+        if self.episode_steps <= 0:
+            raise ValueError("episode_steps must be positive")
+        _validate_hourly_ranges(
+            name="demand_ranges",
+            ranges=self.demand_ranges,
+            episode_steps=self.episode_steps,
+            station_count=self.station_count,
+        )
+        _validate_hourly_ranges(
+            name="return_ranges",
+            ranges=self.return_ranges,
+            episode_steps=self.episode_steps,
+            station_count=self.station_count,
+        )
 
     @property
     def station_count(self) -> int:
@@ -46,18 +83,23 @@ class DdareungiEnv(gym.Env):
             config = load_default_config()
         self.config = config
         self.rng = random.Random(seed)
+
+        # action은 "다음에 방문할 대여소 index" 하나로 단순화한다.
         self.action_space = spaces.Discrete(self.config.station_count)
+
+        # observation = 대여소별 재고 + 트럭 위치 + 트럭 적재량 + 현재 시간.
         self.observation_space = spaces.Box(
             low=0.0,
             high=1.0,
             shape=(self.config.station_count + 3,),
             dtype=np.float32,
         )
+
+        # 아래 네 값이 episode 중 계속 변하는 환경 state이다.
         self.station_bikes = [0 for _ in range(self.config.station_count)]
         self.truck_location = 0
         self.truck_bikes = self.config.initial_truck_bikes
         self.time_step = 0
-        self.last_info: dict[str, object] = {}
 
     def reset(self, seed: int | None = None) -> tuple[np.ndarray, dict[str, object]]:
         """새 episode를 시작하고 observation과 info를 반환한다."""
@@ -66,13 +108,17 @@ class DdareungiEnv(gym.Env):
             self.rng.seed(seed)
             self.action_space.seed(seed)
         self.station_bikes = [
-            self.rng.randint(2, 8) for _ in range(self.config.station_count)
+            self.rng.randint(
+                self.config.initial_stock_min,
+                self.config.initial_stock_max,
+            )
+            for _ in range(self.config.station_count)
         ]
         self.truck_location = 0
         self.truck_bikes = self.config.initial_truck_bikes
         self.time_step = 0
-        self.last_info = self._info(reward=0.0, unmet=0, movement_cost=0)
-        return self._observation(), self.last_info.copy()
+        info = self._info(reward=0.0, unmet=0, movement_cost=0)
+        return self._observation(), info
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, object]]:
         """방문할 대여소 action을 적용하고 다음 상태와 보상을 반환한다."""
@@ -81,12 +127,22 @@ class DdareungiEnv(gym.Env):
             raise ValueError(f"action must be between 0 and {self.config.station_count - 1}")
 
         movement_cost = self.config.move_cost if action != self.truck_location else 0
+
+        # 1. 트럭이 action으로 선택된 대여소로 이동한다.
         self.truck_location = action
+
+        # 2. 방문한 대여소에서 목표 재고에 가까워지도록 싣거나 내린다.
         moved_bikes = self._rebalance(action)
+
+        # 3. 현재 시간대의 대여 수요가 발생하고, 부족분은 unmet_demand가 된다.
         demand = self._sample(self.config.demand_ranges)
         served, unmet = self._apply_demand(demand)
+
+        # 4. 현재 시간대의 반납이 발생하고, 빈 칸이 없으면 rejected_returns가 된다.
         returns = self._sample(self.config.return_ranges)
         accepted_returns, rejected_returns = self._apply_returns(returns)
+
+        # 5. 학습 신호: 헛걸음, 반납 실패, 이동 비용을 모두 벌점으로 계산한다.
         reward = float(
             -self.config.unmet_penalty * unmet
             - self.config.full_penalty * rejected_returns
@@ -107,7 +163,6 @@ class DdareungiEnv(gym.Env):
             rejected_returns=rejected_returns,
             moved_bikes=moved_bikes,
         )
-        self.last_info = info
         return self._observation(), reward, terminated, truncated, info
 
     def render(self) -> str:
@@ -192,6 +247,7 @@ class DdareungiEnv(gym.Env):
         return {
             "time_step": self.time_step,
             "station_names": list(self.config.station_names),
+            # 사람이 평가 결과를 읽을 때 필요한 원본 상태와 step 결과를 담는다.
             "station_bikes": self.station_bikes.copy(),
             "truck_location": self.truck_location,
             "truck_bikes": self.truck_bikes,
@@ -203,6 +259,31 @@ class DdareungiEnv(gym.Env):
             "rejected_returns": rejected_returns,
             "movement_cost": movement_cost,
             "moved_bikes": moved_bikes,
-            "reward_formula": "-unmet_penalty * unmet_demand - full_penalty * rejected_returns - movement_cost",
             "reward": reward,
         }
+
+
+def _validate_hourly_ranges(
+    name: str,
+    ranges: dict[int, tuple[tuple[int, int], ...]],
+    episode_steps: int,
+    station_count: int,
+) -> None:
+    """시간대별 샘플링 범위가 episode 길이와 대여소 수에 맞는지 검증한다."""
+    expected_hours = set(range(episode_steps))
+    actual_hours = set(ranges)
+    if actual_hours != expected_hours:
+        missing = sorted(expected_hours - actual_hours)
+        extra = sorted(actual_hours - expected_hours)
+        raise ValueError(f"{name} hour keys mismatch. missing={missing}, extra={extra}")
+
+    for hour, station_ranges in ranges.items():
+        if len(station_ranges) != station_count:
+            raise ValueError(
+                f"{name}[{hour}] must have {station_count} station ranges"
+            )
+        for station_id, (low, high) in enumerate(station_ranges):
+            if low < 0 or high < low:
+                raise ValueError(
+                    f"{name}[{hour}][{station_id}] must satisfy 0 <= low <= high"
+                )

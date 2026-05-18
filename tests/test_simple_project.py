@@ -1,9 +1,13 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from ddareungi_rl.baselines import LowStockPolicy, NoOpPolicy, RandomPolicy
 from ddareungi_rl.config_loader import load_default_config
+from ddareungi_rl.data_profile import load_profile
 from ddareungi_rl.dqn import DQNConfig, evaluate_policy, train_dqn
 from ddareungi_rl.env import DdareungiEnv, EnvConfig
+from ddareungi_rl.profile_builder import build_profile_from_csvs
 
 
 class SimpleProjectTest(unittest.TestCase):
@@ -14,8 +18,31 @@ class SimpleProjectTest(unittest.TestCase):
         config = load_default_config()
 
         self.assertEqual(config.station_names[0], "마곡나루역")
+        self.assertEqual(config.initial_stock_min, 2)
+        self.assertEqual(config.initial_stock_max, 8)
         self.assertEqual(len(config.demand_ranges), 24)
         self.assertEqual(len(config.return_ranges), 24)
+
+    def test_config_rejects_invalid_hourly_ranges(self):
+        """EnvConfig가 잘못된 시간대별 샘플 범위를 거부하는지 확인한다."""
+        with self.assertRaises(ValueError):
+            EnvConfig(
+                station_names=("A", "B", "C"),
+                demand_ranges={0: ((0, 1), (0, 1), (0, 1))},
+                return_ranges={hour: ((0, 1), (0, 1), (0, 1)) for hour in range(24)},
+            )
+
+    def test_config_rejects_invalid_initial_stock_range(self):
+        """초기 재고 범위가 대여소 용량을 넘으면 오류를 내는지 확인한다."""
+        with self.assertRaises(ValueError):
+            EnvConfig(
+                station_names=("A", "B", "C"),
+                demand_ranges={hour: ((0, 1), (0, 1), (0, 1)) for hour in range(24)},
+                return_ranges={hour: ((0, 1), (0, 1), (0, 1)) for hour in range(24)},
+                station_capacity=10,
+                initial_stock_min=2,
+                initial_stock_max=11,
+            )
 
     def test_env_runs_one_episode(self):
         """환경이 reset 후 24 step episode를 끝까지 실행하는지 확인한다."""
@@ -67,7 +94,6 @@ class SimpleProjectTest(unittest.TestCase):
 
         self.assertEqual(info["rejected_returns"], 2)
         self.assertEqual(reward, -6.0)
-        self.assertIn("reward_formula", info)
 
     def test_low_stock_policy_selects_lowest_station(self):
         """Low-stock baseline이 재고가 가장 낮은 대여소를 고르는지 확인한다."""
@@ -94,6 +120,44 @@ class SimpleProjectTest(unittest.TestCase):
 
         self.assertEqual(len(metrics), 2)
         self.assertIn("avg_reward", result)
+
+    def test_profile_builder_creates_real_data_profile(self):
+        """작은 CSV 샘플에서 real-profile JSON을 만들고 환경 설정으로 읽는다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rental_csv = root / "rentals.csv"
+            output_path = root / "profile.json"
+            rental_csv.write_text(
+                "\n".join(
+                    [
+                        "자전거번호,대여일시,대여 대여소번호,대여 대여소명,대여거치대,"
+                        "반납일시,반납대여소번호,반납대여소명,반납거치대,이용시간(분),"
+                        "이용거리(M),생년,성별,이용자종류,대여대여소ID,반납대여소ID,자전거구분",
+                        "SPB-1,2025-01-01 08:00:00,1,마곡나루역,0,"
+                        "2025-01-01 09:00:00,2,마곡수명산,0,60,1000,1990,M,내국인,ST-1,ST-2,일반자전거",
+                        "SPB-2,2025-01-02 08:30:00,1,마곡나루역,0,"
+                        "2025-01-02 09:20:00,2,마곡수명산,0,50,900,1991,F,내국인,ST-1,ST-2,일반자전거",
+                        "SPB-3,2025-01-02 18:00:00,2,마곡수명산,0,"
+                        "2025-01-02 19:00:00,1,마곡나루역,0,60,800,1992,F,내국인,ST-2,ST-1,일반자전거",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            profile = build_profile_from_csvs(
+                rental_paths=[rental_csv],
+                output_path=output_path,
+                station_keyword="마곡",
+                station_count=2,
+                encoding="utf-8",
+                show_progress=False,
+            )
+            config = load_profile(output_path)
+
+            self.assertTrue(output_path.exists())
+            self.assertEqual(len(profile["stations"]), 2)
+            self.assertEqual(config.station_count, 2)
+            self.assertEqual(config.demand_ranges[8][0][1], 5)
 
 
 if __name__ == "__main__":
