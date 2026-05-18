@@ -6,12 +6,26 @@ from pathlib import Path
 
 from ddareungi_rl.baselines import DemandAwarePolicy, LowStockPolicy, NoOpPolicy, RandomPolicy
 from ddareungi_rl.data_profile import load_profile, profile_summary
-from ddareungi_rl.dqn import DQNConfig, evaluate_policy, save_model, train_dqn
+from ddareungi_rl.dqn import (
+    DQNConfig,
+    evaluate_policy,
+    evaluate_policy_with_trace,
+    save_model,
+    train_dqn,
+)
 from ddareungi_rl.env import DdareungiEnv
 from ddareungi_rl.experiment_log import append_dqn_experiment_log
+from ddareungi_rl.reporting import (
+    save_baseline_vs_dqn_csv,
+    save_experiment_config,
+    save_mdp_summary,
+    save_policy_trace_reports,
+    save_training_history_csv,
+)
 from ddareungi_rl.visualization import (
     DQN_COMPARISON_CHART_PATH,
     save_baseline_comparison_chart,
+    save_action_distribution_chart,
     save_dqn_training_curve,
 )
 
@@ -83,19 +97,28 @@ def run_training() -> None:
     config = DQNConfig(episodes=DQN_TRAINING_EPISODES)
     policy, metrics = train_dqn(env, config=config, verbose=True)
     save_model(policy, DEFAULT_MODEL_PATH)
-    result = evaluate_policy(
+    dqn_report = evaluate_policy_with_trace(
         env,
         policy,
         episodes=BASELINE_EPISODES,
         verbose=True,
         label="dqn",
     )
+    result = dqn_report["summary"]
     print(f"last_training_metric={metrics[-1]}")
     print(f"dqn_eval={result}")
     print(f"model_saved={DEFAULT_MODEL_PATH}")
     baseline_results = _evaluate_baseline_summary(env)
     curve_path = _print_dqn_curve_result(metrics, baseline_results)
     _print_dqn_comparison_chart(baseline_results, result)
+    _save_report_outputs(
+        env=env,
+        config=config,
+        profile_path=profile_path,
+        metrics=metrics,
+        baseline_results=baseline_results,
+        dqn_report=dqn_report,
+    )
     log_path = append_dqn_experiment_log(
         config=config,
         env=env,
@@ -107,6 +130,46 @@ def run_training() -> None:
         profile_path=profile_path,
     )
     print(f"dqn_experiment_log_saved={log_path}")
+
+
+def _save_report_outputs(
+    *,
+    env: DdareungiEnv,
+    config: DQNConfig,
+    profile_path: Path,
+    metrics: list[dict[str, float]],
+    baseline_results: dict[str, dict[str, float]],
+    dqn_report: dict[str, object],
+) -> None:
+    """논문식 결과표와 trace CSV를 outputs/reports에 저장하고 경로를 출력한다."""
+    comparison_results = dict(baseline_results)
+    comparison_results["dqn"] = dqn_report["summary"]  # type: ignore[index]
+    report_paths = [
+        save_experiment_config(env=env, config=config, profile_path=profile_path),
+        save_mdp_summary(env),
+        save_baseline_vs_dqn_csv(comparison_results),
+        save_training_history_csv(metrics),
+    ]
+    trace_paths = save_policy_trace_reports(
+        policy_name="dqn",
+        station_names=list(env.config.station_names),
+        evaluation_report=dqn_report,
+    )
+    try:
+        action_chart = save_action_distribution_chart(
+            dqn_report["action_counts"],  # type: ignore[index]
+            list(env.config.station_names),
+        )
+    except RuntimeError as exc:
+        print(f"action 분포 그래프 저장 실패: {exc}")
+        action_chart = None
+
+    for path in report_paths:
+        print(f"report_saved={path}")
+    for path in trace_paths.values():
+        print(f"report_saved={path}")
+    if action_chart:
+        print(f"action_distribution_chart_saved={action_chart}")
 
 
 def _print_dqn_comparison_chart(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import random
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -108,6 +108,9 @@ def train_dqn(
         done = False
         episode_reward = 0.0
         episode_unmet = 0
+        episode_rejected_returns = 0
+        episode_movement_cost = 0
+        episode_losses = []
 
         while not done:
             epsilon = epsilon_by_step(global_step, config)
@@ -122,9 +125,11 @@ def train_dqn(
             replay = replay[-config.replay_size :]
             episode_reward += reward
             episode_unmet += int(info["unmet_demand"])
+            episode_rejected_returns += int(info["rejected_returns"])
+            episode_movement_cost += int(info["movement_cost"])
 
             if len(replay) >= config.min_replay:
-                _learn_from_batch(online, target, optimizer, replay, config)
+                episode_losses.append(_learn_from_batch(online, target, optimizer, replay, config))
             if global_step % config.target_update == 0:
                 target.load_state_dict(online.state_dict())
 
@@ -136,7 +141,10 @@ def train_dqn(
                 "episode": float(episode + 1),
                 "reward": episode_reward,
                 "unmet_demand": float(episode_unmet),
+                "rejected_returns": float(episode_rejected_returns),
+                "movement_cost": float(episode_movement_cost),
                 "epsilon": epsilon_by_step(global_step, config),
+                "loss": float(np.mean(episode_losses)) if episode_losses else 0.0,
             }
         )
         if verbose and _should_log_training(episode + 1, config.episodes, log_interval):
@@ -168,10 +176,37 @@ def evaluate_policy(
     sequential_dates: bool = True,
 ) -> dict[str, float]:
     """policy를 여러 episode에서 평가하고 평균 지표를 반환한다."""
+    return evaluate_policy_with_trace(
+        env=env,
+        policy=policy,
+        episodes=episodes,
+        seed=seed,
+        verbose=verbose,
+        label=label,
+        sequential_dates=sequential_dates,
+    )["summary"]
+
+
+def evaluate_policy_with_trace(
+    env: DdareungiEnv,
+    policy: Policy,
+    episodes: int = 5,
+    seed: int = 1000,
+    verbose: bool = False,
+    label: str = "policy",
+    sequential_dates: bool = True,
+) -> dict[str, Any]:
+    """policy 평가 summary, episode별 결과, step trace, action 분포를 함께 반환한다."""
     rewards = []
     unmet_values = []
     rejected_return_values = []
+    movement_cost_values = []
     service_rates = []
+    episode_rows = []
+    step_rows = []
+    action_counts = {station_id: 0 for station_id in range(env.config.station_count)}
+    same_location_count = 0
+    total_steps = 0
     for episode in range(episodes):
         options = (
             {"daily_index": _evaluation_daily_index(episode, episodes, len(env.config.daily_dates))}
@@ -184,20 +219,66 @@ def evaluate_policy(
         served_sum = 0
         unmet_sum = 0
         rejected_return_sum = 0
+        movement_cost_sum = 0
+        episode_same_location_count = 0
+        active_date = reset_info.get("active_date") or "-"
         while not done:
-            _, reward, terminated, truncated, info = env.step(policy.act(env))
+            previous_location = env.truck_location
+            action = int(policy.act(env))
+            if action == previous_location:
+                same_location_count += 1
+                episode_same_location_count += 1
+            action_counts[action] += 1
+            _, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             reward_sum += reward
             served_sum += int(info["served_demand"])
             unmet_sum += int(info["unmet_demand"])
             rejected_return_sum += int(info["rejected_returns"])
+            movement_cost_sum += int(info["movement_cost"])
+            total_steps += 1
+            step_rows.append(
+                {
+                    "policy": label,
+                    "episode": episode + 1,
+                    "date": active_date,
+                    "time_step": int(info["time_step"]),
+                    "action": action,
+                    "previous_truck_location": previous_location,
+                    "truck_location": int(info["truck_location"]),
+                    "truck_bikes": int(info["truck_bikes"]),
+                    "reward": float(reward),
+                    "served_demand": int(info["served_demand"]),
+                    "unmet_demand": int(info["unmet_demand"]),
+                    "rejected_returns": int(info["rejected_returns"]),
+                    "movement_cost": int(info["movement_cost"]),
+                    "moved_bikes": int(info["moved_bikes"]),
+                    "station_bikes": "|".join(str(value) for value in info["station_bikes"]),
+                    "demand": "|".join(str(value) for value in info["demand"]),
+                    "returns": "|".join(str(value) for value in info["returns"]),
+                }
+            )
         total_demand = served_sum + unmet_sum
         rewards.append(reward_sum)
         unmet_values.append(unmet_sum)
         rejected_return_values.append(rejected_return_sum)
+        movement_cost_values.append(movement_cost_sum)
         service_rates.append(served_sum / total_demand if total_demand else 1.0)
+        episode_rows.append(
+            {
+                "policy": label,
+                "episode": episode + 1,
+                "date": active_date,
+                "reward": reward_sum,
+                "served_demand": served_sum,
+                "unmet_demand": unmet_sum,
+                "rejected_returns": rejected_return_sum,
+                "movement_cost": movement_cost_sum,
+                "service_rate": service_rates[-1],
+                "same_location_steps": episode_same_location_count,
+            }
+        )
         if verbose:
-            active_date = reset_info.get("active_date") or "-"
             print(
                 f"[{label}] episode {episode + 1:02d}/{episodes} "
                 f"date={active_date} reward={reward_sum:.1f} "
@@ -205,10 +286,17 @@ def evaluate_policy(
                 f"service_rate={service_rates[-1]:.3f}"
             )
     return {
-        "avg_reward": float(np.mean(rewards)),
-        "avg_unmet_demand": float(np.mean(unmet_values)),
-        "avg_rejected_returns": float(np.mean(rejected_return_values)),
-        "avg_service_rate": float(np.mean(service_rates)),
+        "summary": {
+            "avg_reward": float(np.mean(rewards)),
+            "avg_unmet_demand": float(np.mean(unmet_values)),
+            "avg_rejected_returns": float(np.mean(rejected_return_values)),
+            "avg_movement_cost": float(np.mean(movement_cost_values)),
+            "avg_service_rate": float(np.mean(service_rates)),
+            "same_location_rate": same_location_count / total_steps if total_steps else 0.0,
+        },
+        "episodes": episode_rows,
+        "steps": step_rows,
+        "action_counts": action_counts,
     }
 
 
@@ -233,7 +321,7 @@ def _learn_from_batch(
     optimizer: torch.optim.Optimizer,
     replay: list[tuple[np.ndarray, int, float, np.ndarray, bool]],
     config: DQNConfig,
-) -> None:
+) -> float:
     """replay buffer에서 batch를 뽑아 DQN 손실을 한 번 학습한다."""
     batch = random.sample(replay, config.batch_size)
     states, actions, rewards, next_states, dones = zip(*batch)
@@ -252,3 +340,4 @@ def _learn_from_batch(
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+    return float(loss.item())

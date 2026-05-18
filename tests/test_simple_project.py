@@ -9,6 +9,7 @@ from ddareungi_rl.dqn import DQNConfig, evaluate_policy, train_dqn
 from ddareungi_rl.env import DdareungiEnv, EnvConfig
 from ddareungi_rl.experiment_log import append_dqn_experiment_log, read_experiment_log
 from ddareungi_rl.profile_builder import build_daily_profile_from_csvs, build_profile_from_csvs
+from ddareungi_rl.reporting import save_baseline_vs_dqn_csv, save_training_history_csv
 
 
 class SimpleProjectTest(unittest.TestCase):
@@ -174,6 +175,53 @@ class SimpleProjectTest(unittest.TestCase):
             self.assertEqual(records[0]["train_config"]["hidden_size"], 8)
             self.assertEqual(records[0]["eval_episodes"], 2)
             self.assertEqual(records[0]["observation_size"], env.observation_space.shape[0])
+
+    def test_report_csv_outputs_are_created(self):
+        """논문식 report CSV 파일이 안정적인 schema로 저장되는지 확인한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            comparison_path = root / "baseline_vs_dqn.csv"
+            history_path = root / "dqn_training_history.csv"
+
+            save_baseline_vs_dqn_csv(
+                {
+                    "low-stock": {
+                        "avg_reward": -3.0,
+                        "avg_unmet_demand": 1.0,
+                        "avg_rejected_returns": 0.0,
+                        "avg_movement_cost": 2.0,
+                        "avg_service_rate": 0.9,
+                        "same_location_rate": 0.1,
+                    },
+                    "dqn": {
+                        "avg_reward": -2.0,
+                        "avg_unmet_demand": 0.5,
+                        "avg_rejected_returns": 0.0,
+                        "avg_movement_cost": 1.0,
+                        "avg_service_rate": 0.95,
+                        "same_location_rate": 0.2,
+                    },
+                },
+                output_path=comparison_path,
+            )
+            save_training_history_csv(
+                [
+                    {
+                        "episode": 1.0,
+                        "reward": -2.0,
+                        "unmet_demand": 0.0,
+                        "rejected_returns": 0.0,
+                        "movement_cost": 1.0,
+                        "epsilon": 0.9,
+                        "loss": 0.1,
+                    }
+                ],
+                output_path=history_path,
+            )
+
+            self.assertIn("policy,avg_reward", comparison_path.read_text(encoding="utf-8"))
+            self.assertIn("low-stock,-3.0", comparison_path.read_text(encoding="utf-8"))
+            self.assertIn("episode,reward", history_path.read_text(encoding="utf-8"))
 
     def test_profile_builder_creates_real_data_profile(self):
         """작은 CSV 샘플에서 real-profile JSON을 만들고 환경 설정으로 읽는다."""

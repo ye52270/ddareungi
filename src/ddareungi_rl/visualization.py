@@ -8,6 +8,7 @@ from pathlib import Path
 BASELINE_CHART_PATH = Path("outputs/figures/baseline_comparison.png")
 DQN_COMPARISON_CHART_PATH = Path("outputs/figures/dqn_vs_baseline_comparison.png")
 DQN_TRAINING_CHART_PATH = Path("outputs/figures/dqn_training_curve.png")
+ACTION_DISTRIBUTION_CHART_PATH = Path("outputs/figures/action_distribution.png")
 
 
 def save_baseline_comparison_chart(
@@ -123,6 +124,41 @@ def save_dqn_training_curve(
     )
 
     fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+    return output_path
+
+
+def save_action_distribution_chart(
+    action_counts: dict[int, int],
+    station_names: list[str],
+    output_path: Path = ACTION_DISTRIBUTION_CHART_PATH,
+) -> Path:
+    """DQN이 평가 중 선택한 대여소 action 분포 그래프를 저장한다."""
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "matplotlib이 설치되어 있지 않아 그래프를 저장하지 못했습니다. "
+            "`pip install -e .` 또는 `pip install matplotlib` 후 다시 실행하세요."
+        ) from exc
+
+    _configure_korean_font(plt)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    labels = [station_names[action] for action in action_counts]
+    values = [action_counts[action] for action in action_counts]
+    total = max(1, sum(values))
+    colors = ["#2f80ed", "#27ae60", "#f2994a", "#9b51e0", "#eb5757"]
+
+    fig, axis = plt.subplots(figsize=(10, 5))
+    axis.bar(labels, values, color=colors[: len(labels)])
+    axis.set_title("DQN Action Distribution", fontsize=14, fontweight="bold")
+    axis.set_ylabel("선택 횟수")
+    axis.tick_params(axis="x", rotation=15)
+    axis.grid(axis="y", alpha=0.25)
+    for index, value in enumerate(values):
+        axis.text(index, value, f"{value}회\n{value / total:.1%}", ha="center", va="bottom")
+    fig.tight_layout()
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
     return output_path
