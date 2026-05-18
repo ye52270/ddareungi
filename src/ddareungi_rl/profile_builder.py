@@ -150,6 +150,104 @@ def build_profile_from_csvs(
     return payload
 
 
+def build_daily_profile_from_csvs(
+    rental_paths: list[Path],
+    output_path: Path,
+    station_keyword: str = "마곡",
+    station_count: int = 3,
+    station_ids: tuple[str, ...] = (),
+    master_csv: Path | None = None,
+    encoding: str = "cp949",
+    show_progress: bool = True,
+) -> dict[str, object]:
+    """대여이력 CSV를 날짜/시간대별 실제 대여/반납 count profile로 변환한다."""
+    if master_csv is not None and not master_csv.is_file():
+        raise ValueError(f"master_csv must be a file: {master_csv}")
+
+    candidates = _select_station_candidates(
+        rental_paths=rental_paths,
+        station_keyword=station_keyword,
+        station_count=station_count,
+        station_ids=station_ids,
+        encoding=encoding,
+        show_progress=show_progress,
+    )
+    if not candidates:
+        raise ValueError(f"No stations found for keyword or ids: {station_keyword}")
+
+    station_index = {
+        candidate.station_id: index for index, candidate in enumerate(candidates)
+    }
+    demand_by_date: dict[str, list[list[int]]] = {}
+    return_by_date: dict[str, list[list[int]]] = {}
+
+    for row in _iter_rental_rows(
+        rental_paths,
+        encoding=encoding,
+        desc="날짜별 집계",
+        show_progress=show_progress,
+    ):
+        _add_daily_count(
+            row=row,
+            time_column=RENT_TIME_COLUMN,
+            station_id_column=RENT_STATION_ID_COLUMN,
+            station_index=station_index,
+            counts_by_date=demand_by_date,
+        )
+        _add_daily_count(
+            row=row,
+            time_column=RETURN_TIME_COLUMN,
+            station_id_column=RETURN_STATION_ID_COLUMN,
+            station_index=station_index,
+            counts_by_date=return_by_date,
+        )
+
+    all_dates = sorted(set(demand_by_date) | set(return_by_date))
+    master_lookup = _load_master_lookup(master_csv, encoding) if master_csv else {}
+    payload: dict[str, object] = {
+        "profile_kind": "daily",
+        "stations": [
+            {
+                "id": candidate.station_id,
+                "name": candidate.name,
+                **master_lookup.get(candidate.station_id, {}),
+            }
+            for candidate in candidates
+        ],
+        "daily_demand_counts": {
+            date: demand_by_date.get(date, _empty_day_counts(len(candidates)))
+            for date in all_dates
+        },
+        "daily_return_counts": {
+            date: return_by_date.get(date, _empty_day_counts(len(candidates)))
+            for date in all_dates
+        },
+        "metadata": {
+            "source_files": [str(path) for path in rental_paths],
+            "station_keyword": station_keyword,
+            "day_count": len(all_dates),
+            "hour_count": 24,
+            "station_count": len(candidates),
+            "observation_count": len(all_dates) * 24 * len(candidates),
+            "candidate_counts": [
+                {
+                    "id": candidate.station_id,
+                    "name": candidate.name,
+                    "matched_rows": candidate.count,
+                }
+                for candidate in candidates
+            ],
+        },
+    }
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return payload
+
+
 def find_station_candidates(
     rental_paths: list[Path],
     station_keyword: str,
@@ -220,6 +318,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--max-sample-high", type=int, default=5)
     parser.add_argument("--scale", type=float)
     parser.add_argument(
+        "--profile-kind",
+        choices=("hourly", "daily"),
+        default="hourly",
+        help="hourly는 평균 24시간 profile, daily는 날짜/시간대별 count profile을 만든다.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path("outputs/data/magok_3station_profile.json"),
@@ -231,23 +335,39 @@ def main(argv: list[str] | None = None) -> None:
         for station_id in args.station_ids.split(",")
         if station_id.strip()
     )
-    profile = build_profile_from_csvs(
-        rental_paths=rental_csv_paths(args.rental_dir),
-        output_path=args.output,
-        station_keyword=args.station_keyword,
-        station_count=args.station_count,
-        station_ids=station_ids,
-        master_csv=args.master_csv,
-        encoding=args.encoding,
-        max_sample_high=args.max_sample_high,
-        scale=args.scale,
-        show_progress=True,
-    )
+    rental_paths = rental_csv_paths(args.rental_dir)
+    if args.profile_kind == "daily":
+        profile = build_daily_profile_from_csvs(
+            rental_paths=rental_paths,
+            output_path=args.output,
+            station_keyword=args.station_keyword,
+            station_count=args.station_count,
+            station_ids=station_ids,
+            master_csv=args.master_csv,
+            encoding=args.encoding,
+            show_progress=True,
+        )
+    else:
+        profile = build_profile_from_csvs(
+            rental_paths=rental_paths,
+            output_path=args.output,
+            station_keyword=args.station_keyword,
+            station_count=args.station_count,
+            station_ids=station_ids,
+            master_csv=args.master_csv,
+            encoding=args.encoding,
+            max_sample_high=args.max_sample_high,
+            scale=args.scale,
+            show_progress=True,
+        )
     stations = ", ".join(station["name"] for station in profile["stations"])
     print(f"profile_saved={args.output}")
     print(f"stations={stations}")
     print(f"day_count={profile['metadata']['day_count']}")
-    print(f"scale={profile['metadata']['scale']}")
+    if args.profile_kind == "daily":
+        print(f"observation_count={profile['metadata']['observation_count']}")
+    else:
+        print(f"scale={profile['metadata']['scale']}")
 
 
 def _iter_rental_rows(
@@ -315,6 +435,58 @@ def _candidates_from_station_ids(
         )
         for station_id in station_ids
     ]
+
+
+def _select_station_candidates(
+    rental_paths: list[Path],
+    station_keyword: str,
+    station_count: int,
+    station_ids: tuple[str, ...],
+    encoding: str,
+    show_progress: bool,
+) -> list[StationCandidate]:
+    """ID 직접 지정 또는 keyword 검색 방식으로 분석 대상 대여소를 고른다."""
+    if station_ids:
+        return _candidates_from_station_ids(
+            rental_paths=rental_paths,
+            station_ids=station_ids,
+            encoding=encoding,
+            show_progress=show_progress,
+        )
+    return find_station_candidates(
+        rental_paths=rental_paths,
+        station_keyword=station_keyword,
+        station_count=station_count,
+        encoding=encoding,
+        show_progress=show_progress,
+    )
+
+
+def _add_daily_count(
+    row: dict[str, str],
+    time_column: str,
+    station_id_column: str,
+    station_index: dict[str, int],
+    counts_by_date: dict[str, list[list[int]]],
+) -> None:
+    """row 하나의 대여 또는 반납 이벤트를 날짜/시간/대여소 count에 더한다."""
+    station_id = row.get(station_id_column, "").strip()
+    if station_id not in station_index:
+        return
+
+    event_time = _parse_datetime(row.get(time_column, ""))
+    if event_time is None:
+        return
+
+    date_key = event_time.date().isoformat()
+    station_count = len(station_index)
+    day_counts = counts_by_date.setdefault(date_key, _empty_day_counts(station_count))
+    day_counts[event_time.hour][station_index[station_id]] += 1
+
+
+def _empty_day_counts(station_count: int) -> list[list[int]]:
+    """하루 24시간 x 대여소 수 형태의 0 count 배열을 만든다."""
+    return [[0 for _ in range(station_count)] for _ in range(24)]
 
 
 def _parse_datetime(raw_value: str) -> datetime | None:

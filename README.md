@@ -98,6 +98,19 @@ ddareungi-build-profile \
 
 공공데이터의 실제 건수는 현재 toy 환경의 대여소 용량보다 훨씬 클 수 있다. 그래서 기본값은 실제 시간대 패턴을 유지하되 `max_sample_high=5` 안에 들어오도록 자동 축소한다. 필요하면 `--scale` 또는 `--max-sample-high`로 조정한다.
 
+날짜별 학습 데이터가 필요하면 `daily` profile을 만든다.
+
+```bash
+ddareungi-build-profile \
+  --rental-dir "data/서울특별시 공공자전거 대여이력 정보_2025" \
+  --station-keyword "마곡" \
+  --station-count 3 \
+  --profile-kind daily \
+  --output outputs/data/magok_3station_daily_profile.json
+```
+
+`hourly` profile은 1년치를 평균적인 24시간 패턴으로 압축한다. 반면 `daily` profile은 `날짜 -> 시간 -> 대여소`별 실제 대여/반납 count를 보존한다. DQN 학습을 실제 데이터에 더 가깝게 만들려면 `daily` profile을 환경에 연결하는 방향이 다음 단계다.
+
 ## 지금 버전의 의도
 
 이 버전은 최종 완성본이 아니다. 다시 시작하기 위한 깨끗한 출발점이다.

@@ -7,7 +7,7 @@ from ddareungi_rl.config_loader import load_default_config
 from ddareungi_rl.data_profile import load_profile
 from ddareungi_rl.dqn import DQNConfig, evaluate_policy, train_dqn
 from ddareungi_rl.env import DdareungiEnv, EnvConfig
-from ddareungi_rl.profile_builder import build_profile_from_csvs
+from ddareungi_rl.profile_builder import build_daily_profile_from_csvs, build_profile_from_csvs
 
 
 class SimpleProjectTest(unittest.TestCase):
@@ -158,6 +158,46 @@ class SimpleProjectTest(unittest.TestCase):
             self.assertEqual(len(profile["stations"]), 2)
             self.assertEqual(config.station_count, 2)
             self.assertEqual(config.demand_ranges[8][0][1], 5)
+
+    def test_daily_profile_builder_keeps_date_hour_counts(self):
+        """작은 CSV 샘플에서 날짜/시간대별 대여와 반납 count를 보존한다."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rental_csv = root / "rentals.csv"
+            output_path = root / "daily_profile.json"
+            rental_csv.write_text(
+                "\n".join(
+                    [
+                        "자전거번호,대여일시,대여 대여소번호,대여 대여소명,대여거치대,"
+                        "반납일시,반납대여소번호,반납대여소명,반납거치대,이용시간(분),"
+                        "이용거리(M),생년,성별,이용자종류,대여대여소ID,반납대여소ID,자전거구분",
+                        "SPB-1,2025-01-01 08:00:00,1,마곡나루역,0,"
+                        "2025-01-01 09:00:00,2,마곡수명산,0,60,1000,1990,M,내국인,ST-1,ST-2,일반자전거",
+                        "SPB-2,2025-01-01 08:30:00,1,마곡나루역,0,"
+                        "2025-01-01 09:20:00,2,마곡수명산,0,50,900,1991,F,내국인,ST-1,ST-2,일반자전거",
+                        "SPB-3,2025-01-02 18:00:00,2,마곡수명산,0,"
+                        "2025-01-02 19:00:00,1,마곡나루역,0,60,800,1992,F,내국인,ST-2,ST-1,일반자전거",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            profile = build_daily_profile_from_csvs(
+                rental_paths=[rental_csv],
+                output_path=output_path,
+                station_keyword="마곡",
+                station_count=2,
+                encoding="utf-8",
+                show_progress=False,
+            )
+
+            self.assertEqual(profile["profile_kind"], "daily")
+            self.assertEqual(profile["metadata"]["day_count"], 2)
+            self.assertEqual(profile["metadata"]["observation_count"], 96)
+            self.assertEqual(profile["daily_demand_counts"]["2025-01-01"][8][0], 2)
+            self.assertEqual(profile["daily_return_counts"]["2025-01-01"][9][1], 2)
+            self.assertEqual(profile["daily_demand_counts"]["2025-01-02"][18][1], 1)
+            self.assertEqual(profile["daily_return_counts"]["2025-01-02"][19][0], 1)
 
 
 if __name__ == "__main__":
