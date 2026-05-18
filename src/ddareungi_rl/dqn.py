@@ -150,6 +150,7 @@ def evaluate_policy(
     """policy를 여러 episode에서 평가하고 평균 지표를 반환한다."""
     rewards = []
     unmet_values = []
+    rejected_return_values = []
     service_rates = []
     for episode in range(episodes):
         env.reset(seed=seed + episode)
@@ -157,19 +158,23 @@ def evaluate_policy(
         reward_sum = 0.0
         served_sum = 0
         unmet_sum = 0
+        rejected_return_sum = 0
         while not done:
             _, reward, terminated, truncated, info = env.step(policy.act(env))
             done = terminated or truncated
             reward_sum += reward
             served_sum += int(info["served_demand"])
             unmet_sum += int(info["unmet_demand"])
+            rejected_return_sum += int(info["rejected_returns"])
         total_demand = served_sum + unmet_sum
         rewards.append(reward_sum)
         unmet_values.append(unmet_sum)
+        rejected_return_values.append(rejected_return_sum)
         service_rates.append(served_sum / total_demand if total_demand else 1.0)
     return {
         "avg_reward": float(np.mean(rewards)),
         "avg_unmet_demand": float(np.mean(unmet_values)),
+        "avg_rejected_returns": float(np.mean(rejected_return_values)),
         "avg_service_rate": float(np.mean(service_rates)),
     }
 

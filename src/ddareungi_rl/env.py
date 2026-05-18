@@ -68,6 +68,7 @@ class EnvConfig:
     target_stock: int = 5
     episode_steps: int = 24
     unmet_penalty: int = 10
+    full_penalty: int = 3
     move_cost: int = 1
     initial_truck_bikes: int = 3
     demand_ranges: dict[int, tuple[tuple[int, int], ...]] = field(
@@ -134,7 +135,11 @@ class DdareungiEnv(gym.Env):
         served, unmet = self._apply_demand(demand)
         returns = self._sample(self.config.return_ranges)
         accepted_returns, rejected_returns = self._apply_returns(returns)
-        reward = float(-self.config.unmet_penalty * unmet - movement_cost)
+        reward = float(
+            -self.config.unmet_penalty * unmet
+            - self.config.full_penalty * rejected_returns
+            - movement_cost
+        )
 
         self.time_step += 1
         terminated = False
@@ -246,5 +251,6 @@ class DdareungiEnv(gym.Env):
             "rejected_returns": rejected_returns,
             "movement_cost": movement_cost,
             "moved_bikes": moved_bikes,
+            "reward_formula": "-unmet_penalty * unmet_demand - full_penalty * rejected_returns - movement_cost",
             "reward": reward,
         }

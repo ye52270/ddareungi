@@ -7,6 +7,14 @@ import random
 from ddareungi_rl.env import DdareungiEnv
 
 
+class NoOpPolicy:
+    """트럭을 현재 위치에 머물게 하는 기준선이다."""
+
+    def act(self, env: DdareungiEnv) -> int:
+        """현재 트럭 위치를 그대로 action으로 반환한다."""
+        return env.truck_location
+
+
 class RandomPolicy:
     """무작위로 다음 방문 대여소를 선택한다."""
 

@@ -1,8 +1,8 @@
 import unittest
 
-from ddareungi_rl.baselines import LowStockPolicy, RandomPolicy
+from ddareungi_rl.baselines import LowStockPolicy, NoOpPolicy, RandomPolicy
 from ddareungi_rl.dqn import DQNConfig, evaluate_policy, train_dqn
-from ddareungi_rl.env import DdareungiEnv
+from ddareungi_rl.env import DdareungiEnv, EnvConfig
 
 
 class SimpleProjectTest(unittest.TestCase):
@@ -31,7 +31,33 @@ class SimpleProjectTest(unittest.TestCase):
 
         self.assertIn("avg_reward", result)
         self.assertIn("avg_unmet_demand", result)
+        self.assertIn("avg_rejected_returns", result)
         self.assertIn("avg_service_rate", result)
+
+    def test_no_op_policy_keeps_truck_location(self):
+        """NO-OP baseline이 현재 트럭 위치를 그대로 반환하는지 확인한다."""
+        env = DdareungiEnv(seed=123)
+        env.reset(seed=123)
+        env.truck_location = 2
+
+        self.assertEqual(NoOpPolicy().act(env), 2)
+
+    def test_reward_penalizes_rejected_returns(self):
+        """reward가 반납 실패도 벌점으로 반영하는지 확인한다."""
+        config = EnvConfig(
+            demand_ranges={hour: ((0, 0), (0, 0), (0, 0)) for hour in range(24)},
+            return_ranges={hour: ((2, 2), (0, 0), (0, 0)) for hour in range(24)},
+        )
+        env = DdareungiEnv(config=config, seed=123)
+        env.reset(seed=123)
+        env.station_bikes = [10, 5, 5]
+        env.truck_bikes = env.config.truck_capacity
+
+        _, reward, _, _, info = env.step(0)
+
+        self.assertEqual(info["rejected_returns"], 2)
+        self.assertEqual(reward, -6.0)
+        self.assertIn("reward_formula", info)
 
     def test_low_stock_policy_selects_lowest_station(self):
         """Low-stock baseline이 재고가 가장 낮은 대여소를 고르는지 확인한다."""

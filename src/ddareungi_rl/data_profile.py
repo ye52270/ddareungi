@@ -21,6 +21,7 @@ def load_profile(path: Path, base: EnvConfig | None = None) -> EnvConfig:
         target_stock=base_config.target_stock,
         episode_steps=base_config.episode_steps,
         unmet_penalty=base_config.unmet_penalty,
+        full_penalty=base_config.full_penalty,
         move_cost=base_config.move_cost,
         initial_truck_bikes=base_config.initial_truck_bikes,
         demand_ranges=_ranges(payload["demand_ranges_by_hour"]),

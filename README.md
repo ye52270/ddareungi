@@ -22,16 +22,20 @@
 |---|---|
 | State | 대여소별 자전거 수, 트럭 위치, 트럭 적재량, 시간 |
 | Action | 다음에 방문할 대여소 선택 |
-| Reward | `-10 * unmet_demand - movement_cost` |
+| Reward | `-10 * unmet_demand - 3 * rejected_returns - movement_cost` |
 | Environment | 대여소 3개, 트럭 1대, 하루 24 step |
 | Goal | 자전거가 없어 빌리지 못하는 수요를 줄이기 |
+
+`unmet_demand`는 자전거가 부족해서 빌리지 못한 수요이고, `rejected_returns`는 대여소가 가득 차 받아주지 못한 반납이다. 이 reward는 참고 프로젝트의 아이디어처럼 대여 실패와 반납 실패를 모두 벌점화한다.
+
+주의: 이 reward는 단순화 이전 버전의 reward와 다르다. 따라서 예전 결과와 직접 비교하지 않고, 같은 reward 기준에서 baseline과 DQN을 다시 비교한다.
 
 ## 남긴 파일
 
 ```text
 src/ddareungi_rl/
   env.py           # MDP 환경
-  baselines.py     # random, low-stock, demand-aware
+  baselines.py     # no-op, random, low-stock, demand-aware
   dqn.py           # PyTorch DQN
   data_profile.py  # 실제 데이터 profile 읽기
   cli.py           # 실행 메뉴

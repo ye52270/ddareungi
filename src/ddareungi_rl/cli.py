@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ddareungi_rl.baselines import DemandAwarePolicy, LowStockPolicy, RandomPolicy
+from ddareungi_rl.baselines import DemandAwarePolicy, LowStockPolicy, NoOpPolicy, RandomPolicy
 from ddareungi_rl.data_profile import load_profile
 from ddareungi_rl.dqn import DQNConfig, evaluate_policy, save_model, train_dqn
 from ddareungi_rl.env import DdareungiEnv, EnvConfig
@@ -24,6 +24,7 @@ def run_baselines(use_profile: bool = False) -> None:
     """세 가지 baseline을 같은 환경에서 평가하고 출력한다."""
     env = make_env(use_profile)
     policies = {
+        "no-op": NoOpPolicy(),
         "random": RandomPolicy(seed=42),
         "low-stock": LowStockPolicy(),
         "demand-aware": DemandAwarePolicy(),
