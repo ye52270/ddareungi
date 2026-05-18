@@ -1,11 +1,11 @@
-"""DQN 계열 알고리즘이 공유하는 설정, policy, 학습 루프."""
+"""DQN 계열 알고리즘이 공유하는 설정, policy, 평가 helper."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 import random
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -15,29 +15,7 @@ from ddareungi_rl.env import DdareungiEnv
 
 
 Transition = tuple[np.ndarray, int, float, np.ndarray, bool]
-
-
-@dataclass
-class DQNConfig:
-    """DQN 계열 학습에 필요한 하이퍼파라미터를 보관한다."""
-
-    episodes: int = 1000
-    gamma: float = 0.95
-    learning_rate: float = 0.0005
-    epsilon_start: float = 1.0
-    epsilon_end: float = 0.05
-    epsilon_decay: int = 8000
-    replay_size: int = 10000
-    batch_size: int = 32
-    min_replay: int = 100
-    target_update: int = 200
-    hidden_size: int = 128
-
-
-TargetFunction = Callable[
-    [nn.Module, nn.Module, torch.Tensor, torch.Tensor, torch.Tensor, DQNConfig],
-    torch.Tensor,
-]
+ReplayBatch = tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
 
 
 class Policy(Protocol):
@@ -64,130 +42,82 @@ class GreedyQPolicy:
 DQNPolicy = GreedyQPolicy
 
 
+@dataclass
+class DQNConfig:
+    """DQN 계열 학습에 필요한 하이퍼파라미터를 보관한다."""
+
+    episodes: int = 1000
+    gamma: float = 0.95
+    learning_rate: float = 0.0005
+    epsilon_start: float = 1.0
+    epsilon_end: float = 0.05
+    epsilon_decay: int = 8000
+    replay_size: int = 10000
+    batch_size: int = 32
+    min_replay: int = 100
+    target_update: int = 200
+    hidden_size: int = 128
+
+
 def epsilon_by_step(step: int, config: DQNConfig) -> float:
     """현재 step의 epsilon 값을 선형 감소 방식으로 계산한다."""
     ratio = min(1.0, step / config.epsilon_decay)
     return config.epsilon_start + ratio * (config.epsilon_end - config.epsilon_start)
 
 
-def train_q_learning(
-    *,
-    env: DdareungiEnv,
-    config: DQNConfig,
-    network_cls: type[nn.Module],
-    target_fn: TargetFunction,
-    seed: int,
-    verbose: bool,
-    log_interval: int,
-    log_label: str,
-) -> tuple[GreedyQPolicy, list[dict[str, float]]]:
-    """DQN 계열 알고리즘을 공통 episode/replay-buffer 루프로 학습한다."""
+def seed_everything(seed: int) -> None:
+    """Python, NumPy, PyTorch 난수 seed를 한 번에 고정한다."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    online = network_cls(
-        env.observation_space.shape[0],
-        env.action_space.n,
-        config.hidden_size,
-    )
-    target = network_cls(
-        env.observation_space.shape[0],
-        env.action_space.n,
-        config.hidden_size,
-    )
-    target.load_state_dict(online.state_dict())
-    optimizer = torch.optim.Adam(online.parameters(), lr=config.learning_rate)
-    replay: list[Transition] = []
-    metrics: list[dict[str, float]] = []
-    global_step = 0
 
-    for episode in range(config.episodes):
-        state, _ = env.reset(seed=seed + episode)
-        done = False
-        episode_reward = 0.0
-        episode_unmet = 0
-        episode_rejected_returns = 0
-        episode_movement_cost = 0
-        episode_losses = []
-
-        while not done:
-            epsilon = epsilon_by_step(global_step, config)
-            if random.random() < epsilon:
-                action = env.action_space.sample()
-            else:
-                action = GreedyQPolicy(online).act(env)
-
-            next_state, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            replay.append((state, action, reward, next_state, done))
-            replay = replay[-config.replay_size :]
-            episode_reward += reward
-            episode_unmet += int(info["unmet_demand"])
-            episode_rejected_returns += int(info["rejected_returns"])
-            episode_movement_cost += int(info["movement_cost"])
-
-            if len(replay) >= config.min_replay:
-                episode_losses.append(
-                    train_one_batch(online, target, optimizer, replay, config, target_fn)
-                )
-            if global_step % config.target_update == 0:
-                target.load_state_dict(online.state_dict())
-
-            state = next_state
-            global_step += 1
-
-        metrics.append(
-            {
-                "episode": float(episode + 1),
-                "reward": episode_reward,
-                "unmet_demand": float(episode_unmet),
-                "rejected_returns": float(episode_rejected_returns),
-                "movement_cost": float(episode_movement_cost),
-                "epsilon": epsilon_by_step(global_step, config),
-                "loss": float(np.mean(episode_losses)) if episode_losses else 0.0,
-            }
-        )
-        if verbose and _should_log_training(episode + 1, config.episodes, log_interval):
-            recent_metrics = metrics[-log_interval:]
-            recent_reward = float(np.mean([metric["reward"] for metric in recent_metrics]))
-            recent_unmet = float(np.mean([metric["unmet_demand"] for metric in recent_metrics]))
-            print(
-                f"[{log_label}] episode {episode + 1:03d}/{config.episodes} "
-                f"avg_reward={recent_reward:.2f} "
-                f"avg_unmet={recent_unmet:.2f} "
-                f"epsilon={metrics[-1]['epsilon']:.3f}"
-            )
-
-    return GreedyQPolicy(online), metrics
-
-
-def train_one_batch(
-    online: nn.Module,
-    target: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    replay: list[Transition],
-    config: DQNConfig,
-    target_fn: TargetFunction,
-) -> float:
-    """replay buffer에서 batch를 뽑아 Q-learning 손실을 한 번 학습한다."""
-    batch = random.sample(replay, config.batch_size)
+def sample_replay_batch(replay: list[Transition], batch_size: int) -> ReplayBatch:
+    """replay buffer에서 batch를 뽑아 PyTorch tensor 묶음으로 바꾼다."""
+    batch = random.sample(replay, batch_size)
     states, actions, rewards, next_states, dones = zip(*batch)
     state_tensor = torch.tensor(np.array(states), dtype=torch.float32)
     action_tensor = torch.tensor(actions, dtype=torch.int64).unsqueeze(1)
     reward_tensor = torch.tensor(rewards, dtype=torch.float32)
     next_state_tensor = torch.tensor(np.array(next_states), dtype=torch.float32)
     done_tensor = torch.tensor(dones, dtype=torch.float32)
+    return state_tensor, action_tensor, reward_tensor, next_state_tensor, done_tensor
 
-    predicted_q = online(state_tensor).gather(1, action_tensor).squeeze(1)
-    with torch.no_grad():
-        td_target = target_fn(online, target, reward_tensor, next_state_tensor, done_tensor, config)
 
-    loss = nn.functional.mse_loss(predicted_q, td_target)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    return float(loss.item())
+def choose_epsilon_greedy_action(
+    env: DdareungiEnv,
+    policy: GreedyQPolicy,
+    epsilon: float,
+) -> int:
+    """epsilon 확률로 무작위 action, 그 외에는 Q-network greedy action을 고른다."""
+    if random.random() < epsilon:
+        return int(env.action_space.sample())
+    return policy.act(env)
+
+
+def should_log_training(episode: int, total_episodes: int, log_interval: int) -> bool:
+    """학습 진행 상황을 출력할 episode인지 판단한다."""
+    return episode == 1 or episode == total_episodes or episode % log_interval == 0
+
+
+def print_training_progress(
+    *,
+    label: str,
+    episode: int,
+    total_episodes: int,
+    metrics: list[dict[str, float]],
+    log_interval: int,
+) -> None:
+    """최근 episode 평균 reward와 unmet demand를 콘솔에 출력한다."""
+    recent_metrics = metrics[-log_interval:]
+    recent_reward = float(np.mean([metric["reward"] for metric in recent_metrics]))
+    recent_unmet = float(np.mean([metric["unmet_demand"] for metric in recent_metrics]))
+    print(
+        f"[{label}] episode {episode:03d}/{total_episodes} "
+        f"avg_reward={recent_reward:.2f} "
+        f"avg_unmet={recent_unmet:.2f} "
+        f"epsilon={metrics[-1]['epsilon']:.3f}"
+    )
 
 
 def evaluate_policy(
