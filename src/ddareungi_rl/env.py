@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import random
 
 import gymnasium as gym
@@ -10,59 +10,13 @@ import numpy as np
 from gymnasium import spaces
 
 
-def default_station_names() -> tuple[str, str, str]:
-    """기본 toy 대여소 이름을 반환한다."""
-    return ("마곡나루역", "LG사옥", "마곡수명산")
-
-
-def default_demand_ranges() -> dict[int, tuple[tuple[int, int], ...]]:
-    """시간대별 대여 수요 샘플링 범위를 반환한다."""
-    return {
-        0: ((0, 1), (0, 1), (0, 1)),
-        1: ((0, 1), (0, 1), (0, 1)),
-        2: ((0, 1), (0, 1), (0, 1)),
-        3: ((0, 1), (0, 1), (0, 1)),
-        4: ((0, 1), (0, 1), (0, 1)),
-        5: ((0, 1), (0, 1), (0, 1)),
-        6: ((2, 4), (0, 1), (1, 2)),
-        7: ((3, 5), (1, 2), (2, 4)),
-        8: ((3, 5), (1, 2), (2, 4)),
-        9: ((2, 4), (1, 2), (1, 3)),
-        10: ((1, 3), (1, 2), (1, 2)),
-        11: ((1, 2), (1, 3), (1, 2)),
-        12: ((1, 2), (1, 3), (1, 2)),
-        13: ((1, 2), (1, 3), (1, 2)),
-        14: ((1, 2), (1, 3), (1, 2)),
-        15: ((1, 2), (2, 3), (1, 2)),
-        16: ((1, 3), (3, 4), (1, 2)),
-        17: ((2, 4), (3, 5), (1, 2)),
-        18: ((2, 4), (3, 5), (1, 2)),
-        19: ((1, 3), (2, 4), (1, 2)),
-        20: ((1, 2), (1, 3), (1, 2)),
-        21: ((1, 2), (1, 2), (1, 2)),
-        22: ((0, 1), (1, 2), (0, 1)),
-        23: ((0, 1), (0, 1), (0, 1)),
-    }
-
-
-def default_return_ranges() -> dict[int, tuple[tuple[int, int], ...]]:
-    """시간대별 반납 수량 샘플링 범위를 반환한다."""
-    return {
-        hour: ((0, 1), (0, 1), (0, 1)) for hour in range(24)
-    } | {
-        7: ((1, 2), (2, 4), (0, 1)),
-        8: ((1, 2), (3, 5), (0, 1)),
-        17: ((2, 4), (1, 2), (0, 1)),
-        18: ((2, 4), (1, 2), (0, 1)),
-        19: ((1, 3), (1, 2), (1, 2)),
-    }
-
-
 @dataclass(frozen=True)
 class EnvConfig:
     """환경의 크기, 보상, 수요 패턴을 보관한다."""
 
-    station_names: tuple[str, ...] = field(default_factory=default_station_names)
+    station_names: tuple[str, ...]
+    demand_ranges: dict[int, tuple[tuple[int, int], ...]]
+    return_ranges: dict[int, tuple[tuple[int, int], ...]]
     station_capacity: int = 10
     truck_capacity: int = 5
     target_stock: int = 5
@@ -71,12 +25,6 @@ class EnvConfig:
     full_penalty: int = 3
     move_cost: int = 1
     initial_truck_bikes: int = 3
-    demand_ranges: dict[int, tuple[tuple[int, int], ...]] = field(
-        default_factory=default_demand_ranges
-    )
-    return_ranges: dict[int, tuple[tuple[int, int], ...]] = field(
-        default_factory=default_return_ranges
-    )
 
     @property
     def station_count(self) -> int:
@@ -92,7 +40,11 @@ class DdareungiEnv(gym.Env):
     def __init__(self, config: EnvConfig | None = None, seed: int | None = None) -> None:
         """환경 설정과 seed를 받아 환경을 초기화한다."""
         super().__init__()
-        self.config = config or EnvConfig()
+        if config is None:
+            from ddareungi_rl.config_loader import load_default_config
+
+            config = load_default_config()
+        self.config = config
         self.rng = random.Random(seed)
         self.action_space = spaces.Discrete(self.config.station_count)
         self.observation_space = spaces.Box(

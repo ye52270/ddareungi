@@ -1,0 +1,22 @@
+# 따릉이 RL Simple - 기본 환경 설정
+
+station:
+  names:
+    - "마곡나루역"
+    - "LG사옥"
+    - "마곡수명산"
+  capacity: 10
+
+truck:
+  capacity: 5
+  initial_bikes: 3
+
+simulation:
+  episode_steps: 24
+  target_stock: 5
+  sample_data: "sample_data/toy_demand_return.json"
+
+reward:
+  unmet_penalty: 10
+  full_penalty: 3
+  move_cost: 1

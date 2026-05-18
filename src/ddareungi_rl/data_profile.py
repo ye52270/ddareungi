@@ -12,7 +12,11 @@ from ddareungi_rl.env import EnvConfig
 def load_profile(path: Path, base: EnvConfig | None = None) -> EnvConfig:
     """profile JSON을 EnvConfig로 변환한다."""
     payload = json.loads(path.read_text(encoding="utf-8"))
-    base_config = base or EnvConfig()
+    if base is None:
+        from ddareungi_rl.config_loader import load_default_config
+
+        base = load_default_config()
+    base_config = base
     stations = payload["stations"]
     return EnvConfig(
         station_names=tuple(str(station["name"]) for station in stations),

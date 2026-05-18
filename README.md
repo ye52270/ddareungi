@@ -35,13 +35,22 @@
 ```text
 src/ddareungi_rl/
   env.py           # MDP 환경
+  config_loader.py # JSON 설정 로더
   baselines.py     # no-op, random, low-stock, demand-aware
   dqn.py           # PyTorch DQN
   data_profile.py  # 실제 데이터 profile 읽기
   cli.py           # 실행 메뉴
+
+config/
+  default_env.yaml # 환경 크기, reward 계수, 기본 sample data 경로
+
+sample_data/
+  toy_demand_return.json # 시간대별 대여/반납 샘플 범위
 ```
 
 시각화, PPT, 여러 DQN 변형, 복잡한 데이터 전처리 코드는 일단 제거했다. 필요하면 나중에 하나씩 다시 붙인다.
+
+환경 코드와 실험 조건은 분리했다. `env.py`는 MDP 동작만 담당하고, 대여소 이름/트럭 용량/reward 계수/시간대별 수요 샘플은 `config/`와 `sample_data/`에서 읽는다.
 
 ## 실행
 

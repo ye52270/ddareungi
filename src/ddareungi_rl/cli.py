@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from ddareungi_rl.baselines import DemandAwarePolicy, LowStockPolicy, NoOpPolicy, RandomPolicy
+from ddareungi_rl.config_loader import load_default_config
 from ddareungi_rl.data_profile import load_profile
 from ddareungi_rl.dqn import DQNConfig, evaluate_policy, save_model, train_dqn
-from ddareungi_rl.env import DdareungiEnv, EnvConfig
+from ddareungi_rl.env import DdareungiEnv
 
 
 DEFAULT_PROFILE_PATH = Path("outputs/data/magok_3station_profile.json")
@@ -16,7 +17,7 @@ DEFAULT_MODEL_PATH = Path("outputs/models/simple_dqn.pt")
 
 def make_env(use_profile: bool = False) -> DdareungiEnv:
     """선택에 따라 toy 환경 또는 real-profile 환경을 만든다."""
-    config = load_profile(DEFAULT_PROFILE_PATH) if use_profile and DEFAULT_PROFILE_PATH.exists() else EnvConfig()
+    config = load_profile(DEFAULT_PROFILE_PATH) if use_profile and DEFAULT_PROFILE_PATH.exists() else load_default_config()
     return DdareungiEnv(config=config, seed=42)
 
 

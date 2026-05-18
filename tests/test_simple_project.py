@@ -1,12 +1,21 @@
 import unittest
 
 from ddareungi_rl.baselines import LowStockPolicy, NoOpPolicy, RandomPolicy
+from ddareungi_rl.config_loader import load_default_config
 from ddareungi_rl.dqn import DQNConfig, evaluate_policy, train_dqn
 from ddareungi_rl.env import DdareungiEnv, EnvConfig
 
 
 class SimpleProjectTest(unittest.TestCase):
     """단순화된 프로젝트의 핵심 흐름을 검증한다."""
+
+    def test_default_config_loads_from_files(self):
+        """기본 환경 설정과 샘플 데이터가 파일에서 로드되는지 확인한다."""
+        config = load_default_config()
+
+        self.assertEqual(config.station_names[0], "마곡나루역")
+        self.assertEqual(len(config.demand_ranges), 24)
+        self.assertEqual(len(config.return_ranges), 24)
 
     def test_env_runs_one_episode(self):
         """환경이 reset 후 24 step episode를 끝까지 실행하는지 확인한다."""
@@ -45,6 +54,7 @@ class SimpleProjectTest(unittest.TestCase):
     def test_reward_penalizes_rejected_returns(self):
         """reward가 반납 실패도 벌점으로 반영하는지 확인한다."""
         config = EnvConfig(
+            station_names=("A", "B", "C"),
             demand_ranges={hour: ((0, 0), (0, 0), (0, 0)) for hour in range(24)},
             return_ranges={hour: ((2, 2), (0, 0), (0, 0)) for hour in range(24)},
         )
