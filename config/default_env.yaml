@@ -28,9 +28,9 @@ simulation:
 
 reward:
   # 자전거가 없어 빌리지 못한 수요 1건당 벌점이다.
-  unmet_penalty: 10
+  unmet_penalty: 15
   # 대여소가 가득 차 반납을 받지 못한 1건당 벌점이다.
-  full_penalty: 3
+  full_penalty: 2
   # 트럭이 다른 대여소로 이동할 때 드는 비용이다.
   move_cost: 1
 

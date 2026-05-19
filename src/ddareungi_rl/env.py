@@ -32,8 +32,8 @@ class EnvConfig:
     truck_capacity: int = 5
     target_stock: int = 5
     episode_steps: int = 24
-    unmet_penalty: int = 10
-    full_penalty: int = 3
+    unmet_penalty: int = 15
+    full_penalty: int = 2
     move_cost: int = 1
     initial_truck_bikes: int = 3
     traffic_enabled: bool = False

@@ -87,16 +87,16 @@ reward = stockout_penalty + full_penalty + movement_penalty
 
 ```text
 reward =
-  -10 * unmet_demand
-  - 3 * rejected_returns
-  - 1 * movement_cost
+  -15 * unmet_demand
+  - 2 * rejected_returns
+  - adjusted_movement_cost
 ```
 
 | 항목 | 식 | 의미 |
 |---|---|---|
-| **대여 실패 벌점** | `-10 * unmet_demand` | 자전거가 없어 빌리지 못한 수요를 강하게 벌점화 |
-| **반납 실패 벌점** | `-3 * rejected_returns` | 대여소가 가득 차 반납하지 못한 수요를 벌점화 |
-| **이동 비용** | `-movement_cost` | 트럭이 불필요하게 많이 이동하는 것을 방지 |
+| **대여 실패 벌점** | `-15 * unmet_demand` | 자전거가 없어 빌리지 못한 수요를 가장 강하게 벌점화 |
+| **반납 실패 벌점** | `-2 * rejected_returns` | 대여소가 가득 차 반납하지 못한 수요를 벌점화 |
+| **이동 비용** | `-adjusted_movement_cost` | 트럭 이동비용에 시간대별 혼잡 계수를 반영 |
 
 > **왜 대여 실패 벌점이 더 큰가?**
 > 대여 실패는 시민이 바로 이동수단을 잃는 상황이므로, 반납 실패보다 더 큰 사용자 손실로 보았다.
@@ -105,23 +105,27 @@ reward =
 
 ## 3. 현재 실험 결과
 
-아래 결과는 `outputs/data/magok_3station_daily_profile.json`을 사용해 **30개 날짜**에서 평가한 값이다.
+아래 결과는 `outputs/data/magok_3station_daily_profile.json`을 사용해 **30개 날짜**에서 평가한 최근 생성 산출물 예시이다.
+reward 가중치나 traffic factor를 바꾼 뒤에는 같은 메뉴로 다시 학습/평가해 표와 그래프를 갱신한다.
 
 | Policy | Avg Reward | Avg Unmet Demand | Avg Rejected Returns | Service Rate |
 |---|---:|---:|---:|---:|
-| no-op | -30.63 | 2.83 | 0.77 | 0.972 |
-| random | -37.63 | 1.93 | 0.80 | 0.982 |
-| low-stock | -22.53 | 1.33 | 1.30 | **0.988** |
-| demand-aware | -25.77 | 1.63 | 1.40 | 0.985 |
-| **DQN** | **-17.53** | **1.33** | **0.50** | 0.986 |
+| low-stock | -21.96 | **1.33** | 1.30 | **0.988** |
+| DQN | -18.64 | 1.53 | **0.40** | 0.985 |
+| Double DQN | -19.06 | 1.53 | 0.47 | 0.985 |
+| **Dueling DQN** | **-18.17** | 1.50 | 0.47 | 0.985 |
 
-현재 결과만 보면 DQN은 `low-stock` baseline과 미충족 수요는 비슷하지만, **반납 실패를 더 적게 만들면서 reward가 가장 좋게 나왔다.**
+현재 결과만 보면 DQN 계열은 `low-stock` baseline보다 평균 reward가 높고, 특히 **반납 실패를 더 적게 만들면서 전체 운영 보상을 개선**했다. 다만 미충족 수요는 baseline보다 소폭 증가했으므로, 현재 설정은 대여 실패 벌점을 더 크게 두어 **헛걸음 감소 중심 정책**을 다시 평가하도록 조정했다.
 
 ### 결과 그래프
 
-**Baseline 정책 비교**
+**Baseline 정책 비교: Random 포함**
 
 ![Baseline comparison](docs/images/baseline_comparison.png)
+
+**알고리즘 결과 비교**
+
+![Algorithm comparison](docs/images/algorithm_comparison.png)
 
 **DQN 학습 곡선**
 
@@ -131,13 +135,34 @@ reward =
 
 ![DQN vs baseline comparison](docs/images/dqn_vs_baseline_comparison.png)
 
+**Double DQN 학습 곡선**
+
+![Double DQN training curve](docs/images/double_dqn_training_curve.png)
+
+**Double DQN vs baseline 비교**
+
+![Double DQN vs baseline comparison](docs/images/double_dqn_vs_baseline_comparison.png)
+
+**Dueling DQN 학습 곡선**
+
+![Dueling DQN training curve](docs/images/dueling_dqn_training_curve.png)
+
+**Dueling DQN vs baseline 비교**
+
+![Dueling DQN vs baseline comparison](docs/images/dueling_dqn_vs_baseline_comparison.png)
+
 실행 후 생성되는 주요 그래프는 다음 위치에 저장된다.
 
 | 산출물 | 파일 |
 |---|---|
 | Baseline 비교 그래프 | `outputs/figures/baseline_comparison.png` |
+| 알고리즘 비교 그래프 | `outputs/figures/algorithm_comparison.png` |
 | DQN 학습 곡선 | `outputs/figures/dqn_training_curve.png` |
 | DQN vs baseline 비교 | `outputs/figures/dqn_vs_baseline_comparison.png` |
+| Double DQN 학습 곡선 | `outputs/figures/double_dqn_training_curve.png` |
+| Double DQN vs baseline 비교 | `outputs/figures/double_dqn_vs_baseline_comparison.png` |
+| Dueling DQN 학습 곡선 | `outputs/figures/dueling_dqn_training_curve.png` |
+| Dueling DQN vs baseline 비교 | `outputs/figures/dueling_dqn_vs_baseline_comparison.png` |
 | DQN parameter/result log | `outputs/experiments/dqn_runs.jsonl` |
 
 > **주의**

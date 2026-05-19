@@ -168,7 +168,7 @@ class SimpleProjectTest(unittest.TestCase):
         _, reward, _, _, info = env.step(0)
 
         self.assertEqual(info["rejected_returns"], 2)
-        self.assertEqual(reward, -6.0)
+        self.assertEqual(reward, -4.0)
 
     def test_low_stock_policy_selects_lowest_station(self):
         """Low-stock baseline이 재고가 가장 낮은 대여소를 고르는지 확인한다."""
@@ -328,7 +328,7 @@ class SimpleProjectTest(unittest.TestCase):
                   "mdp": {
                     "state": ["station_bikes", "expected_demand"],
                     "action": "next station",
-                    "reward": "-10 * unmet_demand"
+                    "reward": "-15 * unmet_demand"
                   },
                   "dqn_config": {"episodes": 3}
                 }
